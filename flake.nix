@@ -64,7 +64,7 @@
           postInstall = desktopPostInstall;
         };
     in
-    flake-utils.lib.eachDefaultSystem (
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (
       system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -176,7 +176,10 @@
           }/bin/ci";
         };
 
-        checks.default = nix-settings-gui;
+        checks.default = pkgs.runCommand "check-default" { } ''
+          echo ${self.packages.${system}.default} >/dev/null
+          touch $out
+        '';
 
         devShells.default = pkgs.mkShell {
           nativeBuildInputs =
