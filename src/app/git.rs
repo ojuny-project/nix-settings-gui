@@ -28,6 +28,85 @@ pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
     });
 }
 
+/// Pull the flake directory without merging. Used by the automatic sync on
+/// open, where a failed pull is reported and the scan continues.
+pub(super) fn pull(dir: &str) -> Result<(), String> {
+    run_git(dir, &["pull", "--ff-only"]).map(|_| ())
+}
+
+/// Whether the local branch can accept a new commit and push.
+#[derive(Debug, PartialEq, Eq)]
+enum RemoteState {
+    Current,
+    Behind,
+    Diverged,
+}
+
+fn classify(output: &str) -> Result<RemoteState, String> {
+    let mut fields = output.split_whitespace();
+    let mut count = || -> Result<u64, String> {
+        fields
+            .next()
+            .ok_or_else(|| "cannot read git ahead/behind count".to_string())?
+            .parse()
+            .map_err(|_| "cannot read git ahead/behind count".to_string())
+    };
+    let ahead = count()?;
+    let behind = count()?;
+    Ok(if behind == 0 {
+        RemoteState::Current
+    } else if ahead == 0 {
+        RemoteState::Behind
+    } else {
+        RemoteState::Diverged
+    })
+}
+
+/// Fetch and reject a commit when the branch is behind or diverged from its
+/// upstream. Returns whether the working tree has changes to commit.
+fn save_sync_state(dir: &str) -> Result<bool, String> {
+    run_git(dir, &["rev-parse", "--is-inside-work-tree"])
+        .map_err(|_| "the flake directory is not a git repository".to_string())?;
+    run_git(
+        dir,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    )
+    .map_err(|_| "no upstream branch is configured".to_string())?;
+    run_git(dir, &["fetch"])?;
+    let counts = run_git(dir, &["rev-list", "--left-right", "--count", "HEAD...@{u}"])?;
+    match classify(&counts)? {
+        RemoteState::Current => {}
+        RemoteState::Behind => {
+            return Err(
+                "the upstream branch has newer commits; the save was written to disk but not committed"
+                    .to_string(),
+            )
+        }
+        RemoteState::Diverged => {
+            return Err(
+                "the branch and its upstream have diverged; the save was written to disk but not committed"
+                    .to_string(),
+            )
+        }
+    }
+    let status = run_git(dir, &["status", "--porcelain"])?;
+    Ok(!status.trim().is_empty())
+}
+
+/// Check the repository, then let the caller offer the commit prompt when the
+/// save left changes to commit.
+pub(super) fn start_save_sync(app: &Rc<App>, tx: &Tx) {
+    let dir = app.base.borrow().clone();
+    if dir.is_empty() {
+        return;
+    }
+    app.status.set_text("Git: checking...");
+    spawn(tx, move |tx| {
+        let result = save_sync_state(&dir);
+        let _ = tx.send_blocking(Msg::GitSaveChecked(result));
+    });
+}
+
 /// Stage every change in the flake directory, commit it, and push.
 fn git_commit_and_push(dir: &str, message: &str) -> Result<String, String> {
     run_git(dir, &["add", "./*"])?;
@@ -130,4 +209,17 @@ pub(super) fn commit_message_dialog(app: &Rc<App>, tx: &Tx) {
         });
     }
     dialog.present();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_remote_state() {
+        assert_eq!(classify("0\t0").unwrap(), RemoteState::Current);
+        assert_eq!(classify("2\t0").unwrap(), RemoteState::Current);
+        assert_eq!(classify("0\t2").unwrap(), RemoteState::Behind);
+        assert_eq!(classify("1\t2").unwrap(), RemoteState::Diverged);
+    }
 }

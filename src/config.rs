@@ -21,6 +21,8 @@ pub struct AppConfig {
     pub reload_dms_on_rebuild: bool,
     #[serde(default)]
     pub expand_details_by_default: bool,
+    #[serde(default)]
+    pub auto_git_sync: bool,
 }
 
 fn default_true() -> bool {
@@ -38,6 +40,7 @@ impl Default for AppConfig {
             reload_mango_on_rebuild: false,
             reload_dms_on_rebuild: false,
             expand_details_by_default: false,
+            auto_git_sync: false,
         }
     }
 }
@@ -103,6 +106,13 @@ mod tests {
         assert!(!config.reload_mango_on_rebuild);
         assert!(!config.reload_dms_on_rebuild);
         assert!(!config.expand_details_by_default);
+        assert!(!config.auto_git_sync);
+    }
+
+    #[test]
+    fn missing_auto_git_sync_deserializes_to_off() {
+        let config: AppConfig = serde_json::from_str("{}").unwrap();
+        assert!(!config.auto_git_sync);
     }
 
     #[test]
@@ -114,6 +124,7 @@ mod tests {
         config.reload_mango_on_rebuild = true;
         config.reload_dms_on_rebuild = true;
         config.expand_details_by_default = true;
+        config.auto_git_sync = true;
         let json = serde_json::to_string(&config).unwrap();
         let back: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.flake_path, config.flake_path);
@@ -125,5 +136,6 @@ mod tests {
             back.expand_details_by_default,
             config.expand_details_by_default
         );
+        assert_eq!(back.auto_git_sync, config.auto_git_sync);
     }
 }

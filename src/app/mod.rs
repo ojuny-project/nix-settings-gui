@@ -292,6 +292,12 @@ fn build_ui(
         "Run dms kill && mmsg dispatch spawn_shell,dms run after a successful rebuild",
         &dms_reload_switch,
     ));
+    let auto_git_switch = gtk::Switch::new();
+    menu_box.append(&preference_row(
+        "Sync git on open and save",
+        "Pull on open, then commit and push after saving",
+        &auto_git_switch,
+    ));
 
     for button in [&configure_btn, &add_file_btn, &refresh_btn, &info_btn] {
         button.set_halign(gtk::Align::Fill);
@@ -410,6 +416,7 @@ fn build_ui(
         expand_details_switch.set_active(config.expand_details_by_default);
         mango_reload_switch.set_active(config.reload_mango_on_rebuild);
         dms_reload_switch.set_active(config.reload_dms_on_rebuild);
+        auto_git_switch.set_active(config.auto_git_sync);
     }
 
     wire(
@@ -429,6 +436,7 @@ fn build_ui(
         &expand_details_switch,
         &mango_reload_switch,
         &dms_reload_switch,
+        &auto_git_switch,
     );
     inputs::refresh(&app_state);
     {
@@ -607,6 +615,7 @@ fn wire_preferences(
     expand_details: &gtk::Switch,
     reload_mango: &gtk::Switch,
     reload_dms: &gtk::Switch,
+    auto_git: &gtk::Switch,
 ) {
     {
         let app = app.clone();
@@ -636,6 +645,13 @@ fn wire_preferences(
         let app = app.clone();
         reload_dms.connect_active_notify(move |switch| {
             app.config.borrow_mut().reload_dms_on_rebuild = switch.is_active();
+            let _ = app.config.borrow().save();
+        });
+    }
+    {
+        let app = app.clone();
+        auto_git.connect_active_notify(move |switch| {
+            app.config.borrow_mut().auto_git_sync = switch.is_active();
             let _ = app.config.borrow().save();
         });
     }

@@ -314,12 +314,25 @@ pub(super) fn reload(app: &Rc<App>, tx: &Tx) {
 
 /// Re-read every file under the current root, exactly like `open_flake`.
 pub(super) fn rescan(app: &Rc<App>, tx: &Tx) {
+    rescan_inner(app, tx, false);
+}
+
+/// Pull the repository before the scan, so an automatic sync on open reads the
+/// pulled tree. A failed pull is reported and the scan still runs.
+pub(super) fn rescan_after_pull(app: &Rc<App>, tx: &Tx) {
+    rescan_inner(app, tx, true);
+}
+
+fn rescan_inner(app: &Rc<App>, tx: &Tx, pull: bool) {
     let base = app.base.borrow().clone();
     let epoch = app.scan_epoch.get() + 1;
     app.scan_epoch.set(epoch);
     app.status.set_text("reloading from disk...");
     scan_started(app);
     spawn(tx, move |tx| {
+        if pull {
+            let _ = tx.send_blocking(Msg::GitPulledOnOpen(super::git::pull(&base)));
+        }
         let started = crate::timing::start();
         let result = scan::scan_root(&base);
         crate::timing::report("scan_root", started);

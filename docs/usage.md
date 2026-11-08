@@ -15,6 +15,10 @@ at the top of the window. The app scans the directory tree, skipping
 
 Recent paths are remembered, so the selector offers them again next time.
 
+With `auto_git_sync` enabled, opening a flake pulls its branch with `--ff-only`
+first. A failed pull is shown as an error and the scan still runs on the local
+files.
+
 ## 2. Reading the window
 
 - The left pane lists every menu the scanner found, grouped by `@menu category`
@@ -82,6 +86,14 @@ Edits are staged in memory and are not written until you save.
   file fails to parse, nothing is written and an error is shown.
 - **Save & rebuild** saves first, then runs the configured rebuild command in a
   terminal. If the save fails, the rebuild does not run.
+- With `auto_git_sync` enabled, a successful **Save** or **Save & rebuild**
+  also syncs git. The app fetches and checks the current branch against its
+  upstream. If the branch is behind, diverged, has no upstream, or the fetch
+  fails, the save stays on disk, the commit is skipped, and the reason is
+  shown. Otherwise the commit message dialog opens and the commit is pushed
+  normally.
+- The **Git sync** button runs the same pull, commit, and push flow on demand,
+  regardless of `auto_git_sync`.
 - Files under `/nix/store` are never writable, and their controls refuse edits.
 
 ## 6. Adding a file
@@ -110,6 +122,10 @@ the rebuild command. The rebuild runs `terminal_command` with
 `rebuild_command`; a `{cmd}` placeholder is replaced, otherwise the rebuild
 command is appended. Privilege escalation is expressed entirely in those two
 commands.
+
+The menu popover also holds the runtime preferences: apply changes immediately,
+expand setting details, reload mango or DMS after a rebuild, and sync git on
+open and save.
 
 ## 9. When nixd is missing
 

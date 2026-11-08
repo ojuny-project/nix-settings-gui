@@ -126,6 +126,8 @@ switches; path adds a folder chooser; tarball and file add a NAR hash field.
 - Add file: opens the new-file dialog (section 9).
 - Save: writes all staged edits (section 5).
 - Save & rebuild: saves, then spawns the rebuild (section 8).
+- Git sync: pulls, offers a commit message when the tree is dirty, then commits
+  and pushes (section 5).
 - A spinner shows while a save or rebuild runs. A second spinner shows while an
   option's apply command runs, so the two never share one indicator.
 - The status line names the option that is being applied and reports whether
@@ -167,6 +169,14 @@ The valid option keys used by add-autocomplete come from the same source.
   slider drag sends one command with the value it ended on, and only one
   command runs at a time. The file is not written, so the change lasts until
   the next rebuild.
+- With `auto_git_sync` enabled, Save also syncs git after the write. The app
+  fetches and compares the current branch with its upstream. A branch that is
+  behind, diverged, has no upstream, or cannot be fetched is reported and left
+  uncommitted. Otherwise the commit message dialog opens and a normal push
+  follows. The commit stays interactive; only the separate Git sync button is
+  skipped.
+- Opening a flake with `auto_git_sync` enabled pulls with `--ff-only` before
+  the scan. A failed pull is reported and the scan still runs.
 
 ## 6. Current system detection
 
@@ -263,6 +273,14 @@ Stored in `~/.config/nix-settings-gui/config.json`:
 | `terminal_command` | Terminal prefix used to spawn the rebuild. |
 | `rebuild_command`  | Command run inside the terminal to rebuild. |
 | `expand_details_by_default` | Open setting descriptions and import origins initially. |
+| `live_apply`       | Run each option's `applyCommand` as soon as it changes. |
+| `reload_mango_on_rebuild` | Append the mango reload command after a successful rebuild. |
+| `reload_dms_on_rebuild` | Append the DMS reload command after a successful rebuild. |
+| `auto_git_sync`    | Pull on open; offer a commit and push after Save. |
+
+The runtime preferences `live_apply`, `expand_details_by_default`,
+`reload_mango_on_rebuild`, `reload_dms_on_rebuild`, and `auto_git_sync` are
+toggled from the menu popover and saved here.
 
 The app runs `terminal_command` with `rebuild_command`. If `terminal_command`
 contains a `{cmd}` placeholder it is replaced; otherwise the rebuild command is

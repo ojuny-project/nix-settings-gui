@@ -7,7 +7,7 @@ use crate::model::MenuModel;
 
 use super::controls::{build_context, build_control_row, control_cmp, evaluate_dependencies};
 use super::dialogs::{open_add_option, open_snippet_dialog};
-use super::save::rescan;
+use super::save::{rescan, rescan_after_pull};
 use super::state::{App, ControlRow, InsertButton, MenuPage, Tx};
 
 // ---------------------------------------------------------------------------
@@ -24,7 +24,12 @@ pub(super) fn open_flake(app: &Rc<App>, tx: &Tx, path: &str) {
     app.config.borrow_mut().remember(path);
     let _ = app.config.borrow().save();
     crate::nixd::warm(Some(path));
-    rescan(app, tx);
+    let auto_sync = app.config.borrow().auto_git_sync;
+    if auto_sync {
+        rescan_after_pull(app, tx);
+    } else {
+        rescan(app, tx);
+    }
 }
 
 pub(super) fn rebuild_view(app: &Rc<App>) {

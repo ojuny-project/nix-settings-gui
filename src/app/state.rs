@@ -52,6 +52,8 @@ pub(super) enum Msg {
     },
     Invalid(Vec<String>),
     GitPulled(Result<bool, String>),
+    GitPulledOnOpen(Result<(), String>),
+    GitSaveChecked(Result<bool, String>),
     GitSynced(Result<String, String>),
     InputsSaved(Result<(), String>),
     InputCheckDone {

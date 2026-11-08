@@ -14,6 +14,7 @@ main.rs
       wallpaper.rs  horizontal wallpaper picker, previews, file operations
       icon.rs       icon table-cell picker, preview, git-staged copy
     edit.rs     span-patch engine, nixfmt, atomic write
+    git.rs      git pull, ahead/behind check, commit, push
     scan.rs     file discovery and record extraction
     dsl.rs      @menu / @option / @template comment parsing
     model.rs    MenuModel, categories, ordering, filtering
@@ -144,8 +145,22 @@ plain value and quotes it for the shell.
 ## 8. Configuration
 
 `config.rs` reads and writes `~/.config/nix-settings-gui/config.json`: the flake
-path, the terminal and rebuild commands, and the recent flake paths. It is the
-only persistent state the app keeps.
+path, the terminal and rebuild commands, the recent flake paths, and the
+runtime preferences (`live_apply`, `reload_mango_on_rebuild`,
+`reload_dms_on_rebuild`, `expand_details_by_default`, `auto_git_sync`). It is
+the only persistent state the app keeps.
+
+### 8.1 Git sync
+
+`app/git.rs` is the git layer. The manual button pulls, offers a commit message
+when the tree is dirty, then commits and pushes. Automatic sync is gated by
+`auto_git_sync`: open pulls with `--ff-only` in the same worker job before the
+scan, so the scan reads the pulled tree, and a failed pull is reported without
+blocking the scan. Save checks the current branch against its upstream after
+the disk write. A branch that is behind, diverged, has no upstream, or cannot
+be fetched is left uncommitted and reported. Otherwise the same commit message
+dialog opens and a normal push follows. Nothing force-pushes, rebases, or
+merges automatically.
 
 ## 9. Flake inputs
 

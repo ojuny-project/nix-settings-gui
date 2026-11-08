@@ -11,7 +11,7 @@ use crate::scan;
 
 use super::dialogs::fill_suggestions;
 use super::enrich::apply_infos;
-use super::git::commit_message_dialog;
+use super::git::{commit_message_dialog, start_save_sync};
 use super::inputs;
 use super::menu::rebuild_view;
 use super::save::{clear_busy, collect_edits, rescan, run_rebuild, scan_finished, set_busy};
@@ -258,6 +258,9 @@ pub(super) fn handle_msg(app: &Rc<App>, tx: &Tx, msg: Msg) {
             app.invalidate_wallpaper();
             rescan(app, tx);
             clear_busy(app);
+            if app.config.borrow().auto_git_sync {
+                start_save_sync(app, tx);
+            }
         }
         Msg::Saved(Err(e)) => {
             clear_busy(app);
@@ -337,6 +340,20 @@ pub(super) fn handle_msg(app: &Rc<App>, tx: &Tx, msg: Msg) {
         Msg::GitPulled(Ok(false)) => app.status.set_text("Git: already up to date"),
         Msg::GitPulled(Err(e)) => {
             app.status.set_text("Git sync failed");
+            show_error(&app.window, &e);
+        }
+        Msg::GitPulledOnOpen(Ok(())) => {}
+        Msg::GitPulledOnOpen(Err(e)) => {
+            app.status.set_text("Git pull failed");
+            show_error(&app.window, &e);
+        }
+        Msg::GitSaveChecked(Ok(true)) => {
+            app.status.set_text("Git: commit changes");
+            commit_message_dialog(app, tx);
+        }
+        Msg::GitSaveChecked(Ok(false)) => app.status.set_text("Git: nothing to commit"),
+        Msg::GitSaveChecked(Err(e)) => {
+            app.status.set_text("Git: sync skipped");
             show_error(&app.window, &e);
         }
         Msg::GitSynced(Ok(_)) => app.status.set_text("Git: synced"),
