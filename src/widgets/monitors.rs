@@ -666,6 +666,11 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
     actions.set_row_spacing(6);
     actions.set_halign(gtk::Align::Start);
     let snap_tolerance = Rc::new(Cell::new(SNAP_TOLERANCE));
+    let snap_label = gtk::Label::builder()
+        .label("Snap distance")
+        .xalign(0.0)
+        .css_classes(["dim-label"])
+        .build();
     let snap = gtk::SpinButton::with_range(0.0, 200.0, 1.0);
     snap.set_value(SNAP_TOLERANCE);
     snap.set_tooltip_text(Some("Snap distance in configuration pixels"));
@@ -682,6 +687,7 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
     actions.insert(&recenter_monitor, -1);
     actions.insert(&remove, -1);
     actions.insert(&add, -1);
+    actions.insert(&snap_label, -1);
     actions.insert(&snap, -1);
     root.append(&actions);
     {
