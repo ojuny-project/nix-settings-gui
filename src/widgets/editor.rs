@@ -1,5 +1,6 @@
 use super::bar::{bar_nix, dock_nix};
 use super::context::ChangeHook;
+use super::docker::{docker_nix, docker_unchanged, DockerRow};
 use super::grid::{grid_nix, grid_unchanged, GridLayoutState};
 use super::keybinds::{connect_keybind_row, csv_matches_list_source, keybinds_nix, KeybindRow};
 use super::menu::{connect_menu_row, menu_rows_nix, menu_rows_unchanged, MenuRow};
@@ -141,6 +142,17 @@ pub enum Editor {
         home_manager: bool,
         home: Option<users::HomeUsers>,
     },
+    Facter {
+        root: gtk::Box,
+        combo: gtk::DropDown,
+        choices: Vec<String>,
+    },
+    Docker {
+        root: gtk::Box,
+        rows: Rc<RefCell<Vec<DockerRow>>>,
+        on_change: ChangeHook,
+        orig_count: usize,
+    },
     SecureBoot {
         root: gtk::Box,
         toggle: gtk::Switch,
@@ -182,6 +194,8 @@ impl Editor {
             Editor::Dock { root, .. } => root.clone().upcast(),
             Editor::Grid { root, .. } => root.clone().upcast(),
             Editor::Users { root, .. } => root.clone().upcast(),
+            Editor::Facter { root, .. } => root.clone().upcast(),
+            Editor::Docker { root, .. } => root.clone().upcast(),
             Editor::SecureBoot { root, .. } => root.clone().upcast(),
             Editor::Raw { root, .. } => root.clone().upcast(),
         }
@@ -281,6 +295,11 @@ impl Editor {
             } => dock_nix(widgets, *widgets_present, extras),
             Editor::Grid { state, .. } => grid_nix(state),
             Editor::Users { .. } => users::users_nix(self),
+            Editor::Facter { combo, choices, .. } => choices
+                .get(combo.selected() as usize)
+                .cloned()
+                .unwrap_or_else(|| quote("auto")),
+            Editor::Docker { .. } => docker_nix(self),
             Editor::SecureBoot { toggle, .. } => {
                 if toggle.is_active() { "true" } else { "false" }.to_string()
             }
@@ -396,6 +415,9 @@ impl Editor {
                 home,
                 ..
             } => users::users_unchanged(rows, *orig_count, *home_manager, home.as_ref()),
+            Editor::Docker {
+                rows, orig_count, ..
+            } => docker_unchanged(rows, *orig_count),
             Editor::SecureBoot { toggle, .. } => toggle.is_active() == truthy(original),
             Editor::Grid { state, .. } => {
                 grid_unchanged(state)
@@ -610,6 +632,13 @@ impl Editor {
                 }
             }
             Editor::Users { on_change, .. } => {
+                *on_change.borrow_mut() = Some(update.clone());
+            }
+            Editor::Facter { combo, .. } => {
+                let update = update.clone();
+                combo.connect_selected_notify(move |_| update());
+            }
+            Editor::Docker { on_change, .. } => {
                 *on_change.borrow_mut() = Some(update.clone());
             }
             Editor::SecureBoot { toggle, .. } => {

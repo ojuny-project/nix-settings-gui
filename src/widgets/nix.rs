@@ -272,6 +272,7 @@ pub fn literal_for_widget(widget: WidgetKind, value: &str) -> String {
         | WidgetKind::Font
         | WidgetKind::IconTheme
         | WidgetKind::CursorTheme => string_literal(value),
+        WidgetKind::Facter => string_literal(value),
         WidgetKind::Path => path_literal(value),
         WidgetKind::Wallpaper => {
             if t == "null" {
@@ -315,6 +316,7 @@ pub fn literal_for_widget(widget: WidgetKind, value: &str) -> String {
         | WidgetKind::Plugins
         | WidgetKind::Bar
         | WidgetKind::Dock
+        | WidgetKind::Docker
         | WidgetKind::GridConfiguration => expr_literal(value),
     }
 }

@@ -566,6 +566,8 @@ pub(super) fn open_add_option(app: &Rc<App>, file: &str, origin: &str) {
         "color",
         "submodule",
         "users",
+        "facter",
+        "docker",
         "raw",
     ] {
         widget.append(Some(kind), kind);

@@ -85,6 +85,20 @@ pub(crate) fn monitor_row_unchanged(row: &MonitorRow) -> bool {
             .all(|field| field.editor.unchanged(&field.orig_value))
 }
 
+pub(crate) fn refresh_literal(value: f64) -> String {
+    if value.fract() == 0.0 {
+        return format!("{}", value as i64);
+    }
+    let mut text = format!("{value:.3}");
+    while text.ends_with('0') {
+        text.pop();
+    }
+    if text.ends_with('.') {
+        text.pop();
+    }
+    text
+}
+
 pub(crate) fn monitor_row_nix(row: &MonitorRow) -> String {
     let mut parts = Vec::new();
     let orig_has =
@@ -100,7 +114,12 @@ pub(crate) fn monitor_row_nix(row: &MonitorRow) -> String {
     };
     number(&mut parts, "width", &row.width);
     number(&mut parts, "height", &row.height);
-    number(&mut parts, "refresh", &row.refresh);
+    if row.refresh.value() != 0.0 || orig_has("refresh") {
+        parts.push(format!(
+            "refresh = {};",
+            refresh_literal(row.refresh.value())
+        ));
+    }
     number(&mut parts, "x", &row.x);
     number(&mut parts, "y", &row.y);
     if row.scale.value() != 1.0 || orig_has("scale") {
@@ -315,7 +334,8 @@ pub(crate) fn make_monitor_row(scan_row: &scan::TableRowScan, ctx: &BuildContext
 
     let width = number_spin(get("width"), 0.0, 0.0, 16384.0, 1.0);
     let height = number_spin(get("height"), 0.0, 0.0, 16384.0, 1.0);
-    let refresh = number_spin(get("refresh"), 0.0, 0.0, 1000.0, 1.0);
+    let refresh = number_spin(get("refresh"), 0.0, 0.0, 1000.0, 0.01);
+    refresh.set_digits(3);
     let x = number_spin(get("x"), 0.0, -16384.0, 16384.0, 1.0);
     let y = number_spin(get("y"), 0.0, -16384.0, 16384.0, 1.0);
     let scale = gtk::SpinButton::with_range(0.0, 16.0, 0.05);
@@ -955,5 +975,17 @@ pub(crate) fn monitor_scaffold(
         key: String::new(),
         fields,
         spec: OptionSpec::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::refresh_literal;
+
+    #[test]
+    fn keeps_fractional_refresh_rates() {
+        assert_eq!(refresh_literal(59.94), "59.94");
+        assert_eq!(refresh_literal(144.0), "144");
+        assert_eq!(refresh_literal(165.02), "165.02");
     }
 }

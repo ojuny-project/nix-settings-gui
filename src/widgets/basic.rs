@@ -1,6 +1,6 @@
 use super::context::PackageSearch;
 use super::editor::Editor;
-use super::nix::{choice_literal, entry_text, parse_string_literal, truthy};
+use super::nix::{choice_literal, entry_text, number_literal, parse_string_literal, truthy};
 use crate::dsl::OptionSpec;
 use crate::value;
 use gtk::glib;
@@ -50,6 +50,12 @@ pub(crate) fn build_spin(spec: &OptionSpec, value_text: &str) -> gtk::SpinButton
     spin.set_digits(spec.digits.unwrap_or(default_digits));
     spin.set_value(value_text.trim().parse::<f64>().unwrap_or(0.0));
     spin.set_halign(gtk::Align::Start);
+    if let Some(unit) = non_empty(spec.unit.as_deref()) {
+        spin.connect_output(move |spin| {
+            spin.set_text(&format_with_unit(spin.value(), spin.digits(), &unit));
+            glib::Propagation::Stop
+        });
+    }
     spin
 }
 
@@ -63,8 +69,28 @@ pub(crate) fn build_slider(spec: &OptionSpec, value_text: &str) -> gtk::Scale {
     let digits = spec.digits.unwrap_or_else(|| step_digits(step));
     scale.set_digits(digits as i32);
     scale.set_hexpand(true);
+    if let Some(unit) = non_empty(spec.unit.as_deref()) {
+        scale.set_format_value_func(move |scale, value| {
+            format_with_unit(value, scale.digits() as u32, &unit)
+        });
+    }
     attach_focus_gated_scroll(&scale);
     scale
+}
+
+fn non_empty(text: Option<&str>) -> Option<String> {
+    text.map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}
+
+pub(crate) fn format_with_unit(value: f64, digits: u32, unit: &str) -> String {
+    let number = number_literal(value, digits);
+    if unit.is_empty() {
+        number
+    } else {
+        format!("{number} {unit}")
+    }
 }
 
 fn step_digits(step: f64) -> u32 {
@@ -375,5 +401,12 @@ mod tests {
     fn surface_delta_is_scaled_by_magic_factor() {
         assert_eq!(forwarded_scroll_delta(2.0, ScrollUnit::Surface, 27.0), 5.0);
         assert_eq!(forwarded_scroll_delta(0.5, ScrollUnit::Surface, 0.0), 1.25);
+    }
+
+    #[test]
+    fn formats_a_number_with_the_unit_suffix() {
+        assert_eq!(format_with_unit(16.0, 0, "MB"), "16 MB");
+        assert_eq!(format_with_unit(1.5, 2, "GB"), "1.50 GB");
+        assert_eq!(format_with_unit(16.0, 0, ""), "16");
     }
 }

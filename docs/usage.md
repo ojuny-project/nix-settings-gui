@@ -75,6 +75,8 @@ Each control type maps to one widget:
 | `icon-theme` | an icon theme string plus its package |
 | `cursor-theme` | a cursor theme string plus its package |
 | `submodule` | a nested attribute set |
+| `facter` | the hardware profile string |
+| `docker` | a container-name-keyed attribute set |
 | `raw`       | verbatim text |
 
 Edits are staged in memory and are not written until you save.

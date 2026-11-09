@@ -290,6 +290,8 @@ pub enum WidgetKind {
     IconTheme,
     CursorTheme,
     Users,
+    Facter,
+    Docker,
     SecureBoot,
     Raw,
 }
@@ -329,6 +331,8 @@ impl WidgetKind {
             "icon-theme" | "icontheme" | "icons" => Self::IconTheme,
             "cursor-theme" | "cursortheme" | "cursors" => Self::CursorTheme,
             "users" => Self::Users,
+            "facter" => Self::Facter,
+            "docker" => Self::Docker,
             "secureboot" | "secure-boot" => Self::SecureBoot,
             "raw" => Self::Raw,
             _ => return None,
@@ -954,6 +958,8 @@ mod tests {
         assert_eq!(WidgetKind::parse("bar"), Some(WidgetKind::Bar));
         assert_eq!(WidgetKind::parse("dock"), Some(WidgetKind::Dock));
         assert_eq!(WidgetKind::parse("users"), Some(WidgetKind::Users));
+        assert_eq!(WidgetKind::parse("facter"), Some(WidgetKind::Facter));
+        assert_eq!(WidgetKind::parse("docker"), Some(WidgetKind::Docker));
         assert_eq!(WidgetKind::parse("font"), Some(WidgetKind::Font));
         assert_eq!(WidgetKind::parse("icon-theme"), Some(WidgetKind::IconTheme));
         assert_eq!(

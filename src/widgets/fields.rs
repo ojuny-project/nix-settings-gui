@@ -248,14 +248,26 @@ mod tests {
     #[test]
     fn keeps_list_and_expression_sources() {
         assert_eq!(
-            unchanged_source("[ \"brightnessctl set 5%-\" ]", "[ \"brightnessctl set 5%-\" ]"),
+            unchanged_source(
+                "[ \"brightnessctl set 5%-\" ]",
+                "[ \"brightnessctl set 5%-\" ]"
+            ),
             Some("[ \"brightnessctl set 5%-\" ]")
         );
         assert_eq!(
-            unchanged_source("config.ojuny.browser.command", "config.ojuny.browser.command"),
+            unchanged_source(
+                "config.ojuny.browser.command",
+                "config.ojuny.browser.command"
+            ),
             Some("config.ojuny.browser.command")
         );
-        assert_eq!(unchanged_source("\"firefox --new-window\"", "firefox --new-window"), None);
-        assert_eq!(unchanged_source("config.ojuny.browser.command", "firefox"), None);
+        assert_eq!(
+            unchanged_source("\"firefox --new-window\"", "firefox --new-window"),
+            None
+        );
+        assert_eq!(
+            unchanged_source("config.ojuny.browser.command", "firefox"),
+            None
+        );
     }
 }

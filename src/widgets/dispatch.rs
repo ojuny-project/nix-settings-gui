@@ -6,7 +6,9 @@ use super::basic::{
 use super::context::BuildContext;
 use super::context::ModuleKind;
 use super::cursor_theme::build_cursor_theme;
+use super::docker::build_docker;
 use super::editor::Editor;
+use super::facter::build_facter;
 use super::file::build_file;
 use super::font::build_font;
 use super::grid::build_grid_configuration;
@@ -135,6 +137,8 @@ fn build_editor(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> 
         WidgetKind::Bar => build_bar(record, ctx),
         WidgetKind::Dock => build_dock(record, ctx),
         WidgetKind::Users => build_users(record, ctx),
+        WidgetKind::Facter => build_facter(record, type_str, ctx),
+        WidgetKind::Docker => build_docker(record),
         WidgetKind::SecureBoot => build_secureboot(record, ctx),
         WidgetKind::Raw => {
             let (view, root) = build_raw(value_text, spec);
@@ -364,6 +368,8 @@ mod tests {
         assert_eq!(WidgetKind::parse("plugins"), Some(WidgetKind::Plugins));
         assert_eq!(WidgetKind::parse("bar"), Some(WidgetKind::Bar));
         assert_eq!(WidgetKind::parse("dock"), Some(WidgetKind::Dock));
+        assert_eq!(WidgetKind::parse("facter"), Some(WidgetKind::Facter));
+        assert_eq!(WidgetKind::parse("docker"), Some(WidgetKind::Docker));
         assert_eq!(WidgetKind::parse("font"), Some(WidgetKind::Font));
         assert_eq!(WidgetKind::parse("icon-theme"), Some(WidgetKind::IconTheme));
         assert_eq!(

@@ -296,6 +296,8 @@ its own interface, such as a Dux Modular Shell or mango IPC call.
 | `bar` | Bar widget configuration | bar-name-keyed attribute set |
 | `dock` | Dock configuration | dock-name-keyed attribute set |
 | `users` | User account list with passwords, groups, SSH keys, and extras | name-keyed attribute set of user options |
+| `facter` | Detected hardware state plus a profile dropdown | profile string |
+| `docker` | Declarative container list with add, edit, and remove | container-name-keyed attribute set |
 | `secureboot` | Live firmware state, a Lanzaboote toggle, and a guided setup flow | `true` / `false` |
 | `raw`       | Monospace Nix editor | verbatim value |
 
@@ -389,6 +391,8 @@ in the application.
 | `bar` | `barConfigs` | a name-keyed attribute set with id-keyed `left`/`center`/`right` widget lists plus layout and appearance. |
 | `dock` | `dockConfigs` | the same shape as `bar`, in its own control. |
 | `users` | `users.users` | a name-keyed attribute set of accounts. Edits `description`, `hashedPassword`, `extraGroups`, `uid`, `shell`, `openssh.authorizedKeys.keys`, and an extra-options field. `wheel` is a separate sudo toggle. The add and remove actions keep at least one normal account with sudo and a password. |
+| `facter` | `ojuny.hardware.profile` | Reads `modules/07-system/facter.json` and shows the detected model, detected profile, coverage state, effective GPU layout, GPU source, and whether the profile manages the GPU. The profile dropdown writes the normal string assignment. A missing report leaves the dropdown usable with empty detection details. |
+| `docker` | `ojuny.patch.docker.containers` | a name-keyed attribute set of `{ image; ports; volumes; environment; autoStart; }`. Add, edit, and remove one container at a time; `environment` is edited as key/value text rows. |
 | `secureboot` | `boot.lanzaboote.enable` | Shows live UEFI state from `bootctl` and `sbctl`, edits the Lanzaboote toggle, and opens a guided setup flow. The flow adds the `lanzaboote` flake input, writes the remaining Lanzaboote options, and runs key setup. Existing keys are kept unless the user explicitly removes them. |
 
 The `users` widget expects the whole `users.users` attribute set, not a single

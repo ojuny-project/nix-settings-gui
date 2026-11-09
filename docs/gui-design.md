@@ -195,8 +195,8 @@ can be resolved. The special name `"all"` in a `systems` list matches every host
 
 Bespoke controls (`keybinds`, `monitors`, `theme`, `wallpaper`, `font`,
 `icon-theme`, `cursor-theme`, `menu`, `plugins`, `bar`, `dock`, `users`,
-`secureboot`) render a configuration-specific UI for a single option, with
-their own add, remove, and reorder actions. The style choosers share one inline search list and preview
+`facter`, `docker`, `secureboot`) render a configuration-specific UI for a
+single option, with their own add, remove, and reorder actions. The style choosers share one inline search list and preview
 pane, modelled on the palette control; each has an `Installed only` toggle.
 Installed entries preview live, while catalog entries that are not installed
 use embedded preview sheets. Selecting a
