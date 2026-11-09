@@ -159,6 +159,7 @@ pub(super) fn rebuild_menu_list(app: &Rc<App>) {
             .label(&name)
             .xalign(0.0)
             .hexpand(true)
+            .visible(!app.sidebar_icons_only.get())
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .build();
         let row = gtk::ListBoxRow::new();

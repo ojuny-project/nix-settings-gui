@@ -404,7 +404,7 @@ pub(crate) fn build_theme(value_text: &str) -> Editor {
     left.set_hexpand(false);
     left.append(&search);
     left.append(&scrolled);
-    left.set_size_request(1, 1);
+    left.set_size_request(360, -1);
 
     let preview_host = gtk::Box::new(gtk::Orientation::Vertical, 6);
     let initial = {

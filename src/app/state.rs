@@ -229,6 +229,8 @@ pub(super) struct App {
     pub(super) system_toggle: gtk::ToggleButton,
     pub(super) advanced_toggle: gtk::ToggleButton,
     pub(super) list: gtk::ListBox,
+    pub(super) list_scroll: gtk::ScrolledWindow,
+    pub(super) sidebar_icons_only: Cell<bool>,
     pub(super) inputs_list: gtk::ListBox,
     pub(super) inputs_page: gtk::Box,
     pub(super) inputs_warning: gtk::Image,

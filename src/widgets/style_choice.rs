@@ -161,7 +161,8 @@ pub(crate) fn placeholder(text: &str, width: i32, height: i32) -> gtk::Widget {
         .css_classes(["dim-label", "caption"])
         .build();
     let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    root.set_size_request(width, height);
+    root.set_size_request(-1, height);
+    root.set_hexpand(true);
     root.set_halign(gtk::Align::Center);
     root.set_valign(gtk::Align::Center);
     root.append(&label);

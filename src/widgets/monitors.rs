@@ -658,17 +658,31 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
         canvas.add_controller(scroll);
     }
 
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let actions = gtk::FlowBox::new();
+    actions.set_selection_mode(gtk::SelectionMode::None);
+    actions.set_homogeneous(false);
+    actions.set_max_children_per_line(8);
+    actions.set_column_spacing(6);
+    actions.set_row_spacing(6);
     actions.set_halign(gtk::Align::Start);
+    let snap_tolerance = Rc::new(Cell::new(SNAP_TOLERANCE));
+    let snap = gtk::SpinButton::with_range(0.0, 200.0, 1.0);
+    snap.set_value(SNAP_TOLERANCE);
+    snap.set_tooltip_text(Some("Snap distance in configuration pixels"));
+    snap.connect_value_changed({
+        let snap_tolerance = snap_tolerance.clone();
+        move |spin| snap_tolerance.set(spin.value())
+    });
     let recenter = gtk::Button::with_label("Re-center view");
     let recenter_monitor = gtk::Button::with_label("Re-center monitor");
     let remove = gtk::Button::with_label("Remove monitor");
     remove.add_css_class("destructive-action");
     let add = gtk::Button::with_label("Add monitor");
-    actions.append(&recenter);
-    actions.append(&recenter_monitor);
-    actions.append(&remove);
-    actions.append(&add);
+    actions.insert(&recenter, -1);
+    actions.insert(&recenter_monitor, -1);
+    actions.insert(&remove, -1);
+    actions.insert(&add, -1);
+    actions.insert(&snap, -1);
     root.append(&actions);
     {
         let mc_recenter = mc.clone();
@@ -682,6 +696,7 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
         let selected = selected.clone();
         let on_change = on_change.clone();
         let mc = mc.clone();
+        let snap_tolerance = snap_tolerance.clone();
         recenter_monitor.connect_clicked(move |_| {
             let rows = rows.borrow();
             let Some(row) = rows.get(selected.get()) else {
@@ -696,7 +711,7 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
                     (ox, oy, ow, oh)
                 })
                 .collect();
-            let (nx, ny) = resolve_release(0.0, 0.0, w, h, &others, SNAP_TOLERANCE);
+            let (nx, ny) = resolve_release(0.0, 0.0, w, h, &others, snap_tolerance.get());
             row.x.set_value(nx.round());
             row.y.set_value(ny.round());
             drop(rows);
@@ -841,6 +856,7 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
             let selected = selected.clone();
             let on_change = on_change.clone();
             let mc = mc.clone();
+            let snap_tolerance = snap_tolerance.clone();
             move |_, _, _| {
                 if let DragMode::Monitor { .. } = drag_mode.get() {
                     let rows = rows.borrow();
@@ -856,7 +872,7 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
                             (ox, oy, ow, oh)
                         })
                         .collect();
-                    let (nx, ny) = resolve_release(x, y, w, h, &others, SNAP_TOLERANCE);
+                    let (nx, ny) = resolve_release(x, y, w, h, &others, snap_tolerance.get());
                     row.x.set_value(nx.round());
                     row.y.set_value(ny.round());
                     drop(rows);

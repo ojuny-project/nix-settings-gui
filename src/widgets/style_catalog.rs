@@ -35,7 +35,8 @@ pub(crate) fn texture_widget(bytes: &'static [u8], width: i32, height: i32) -> g
         let picture = gtk::Picture::for_paintable(&texture);
         picture.set_content_fit(gtk::ContentFit::Contain);
         picture.set_can_shrink(true);
-        picture.set_size_request(width, height);
+        picture.set_size_request(-1, height);
+        picture.set_hexpand(true);
         return picture.upcast();
     }
     let icon = gtk::Image::from_icon_name("image-missing-symbolic");

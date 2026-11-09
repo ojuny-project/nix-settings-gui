@@ -121,6 +121,10 @@ fn build_ui(
         .icon_name("preferences-other-symbolic")
         .tooltip_text("Show hidden menus and advanced options")
         .build();
+    let sidebar_toggle = gtk::ToggleButton::builder()
+        .icon_name("sidebar-show-symbolic")
+        .tooltip_text("Show icons only")
+        .build();
 
     let title_widget = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     title_widget.set_hexpand(true);
@@ -129,6 +133,7 @@ fn build_ui(
     title_widget.append(&search);
     title_widget.append(&system_toggle);
     title_widget.append(&host_combo);
+    title_widget.append(&sidebar_toggle);
     title_widget.append(&advanced_toggle);
 
     let header = adw::HeaderBar::new();
@@ -362,6 +367,8 @@ fn build_ui(
         system_toggle,
         advanced_toggle,
         list,
+        list_scroll: list_scroll.clone(),
+        sidebar_icons_only: Cell::new(false),
         inputs_list,
         inputs_page,
         inputs_warning,
@@ -417,6 +424,15 @@ fn build_ui(
     });
     if show_inputs_by_default {
         app_state.show_page(inputs::INPUTS_PAGE);
+    }
+    {
+        let app = app_state.clone();
+        sidebar_toggle.connect_toggled(move |button| {
+            let icons = button.is_active();
+            app.sidebar_icons_only.set(icons);
+            app.list_scroll.set_width_request(if icons { 60 } else { 220 });
+            rebuild_menu_list(&app);
+        });
     }
 
     {
