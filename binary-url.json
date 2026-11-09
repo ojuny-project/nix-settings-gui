@@ -1,7 +1,7 @@
 {
   "repo": "ojuny-project/nix-settings-gui",
   "system": "x86_64-linux",
-  "latest": "v0.1.0-hotfix-1",
+  "latest": "v0.2.0",
   "releases": {
     "v0.1.0-hotfix-1": {
       "tag": "v0.1.0-hotfix-1",
@@ -11,6 +11,22 @@
           "file": "nix-settings-gui.bin",
           "url": "https://github.com/ojuny-project/nix-settings-gui/releases/download/v0.1.0-hotfix-1/nix-settings-gui.bin",
           "hash": "sha256-4fiCRNFKzcHcHU5r3jCi8r+OG7EtfhnZCFSwlJAfazA="
+        }
+      }
+    },
+    "v0.2.0": {
+      "tag": "v0.2.0",
+      "version": "0.2.0",
+      "packages": {
+        "nix-settings-gui": {
+          "file": "nix-settings-gui.bin",
+          "url": "https://github.com/ojuny-project/nix-settings-gui/releases/download/v0.2.0/nix-settings-gui.bin",
+          "hash": "sha256-GIr0fee8SR4mrua5cmZnfaWpQS1IPenNJJ8wKyngmUo="
+        },
+        "nix-settings-gui-minimal": {
+          "file": "nix-settings-gui-minimal.bin",
+          "url": "https://github.com/ojuny-project/nix-settings-gui/releases/download/v0.2.0/nix-settings-gui-minimal.bin",
+          "hash": "sha256-mFzGM6nu2zCNKI0l5EBmMLniC0tMRNo0hIheIu5HSR0="
         }
       }
     }
