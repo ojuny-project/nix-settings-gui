@@ -396,7 +396,6 @@ pub(crate) fn build_theme(value_text: &str) -> Editor {
         .build();
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
-        .propagate_natural_width(false)
         .vexpand(true)
         .child(&list)
         .build();

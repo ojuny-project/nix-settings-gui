@@ -136,6 +136,7 @@ fn build_ui(
     let list_scroll = gtk::ScrolledWindow::builder()
         .child(&list)
         .hscrollbar_policy(gtk::PolicyType::Never)
+        .width_request(220)
         .vexpand(true)
         .build();
 
@@ -172,8 +173,6 @@ fn build_ui(
     sidebar.append(&inputs_list);
 
     let stack = gtk::Stack::new();
-    stack.set_hhomogeneous(false);
-    stack.set_vhomogeneous(false);
     stack.set_hexpand(true);
     stack.set_vexpand(true);
     let inputs_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -218,10 +217,11 @@ fn build_ui(
     let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
     paned.set_start_child(Some(&sidebar));
     paned.set_end_child(Some(&content_pane));
-    paned.set_position(320);
+    paned.set_position(220);
     paned.set_hexpand(true);
     paned.set_vexpand(true);
-    paned.set_shrink_start_child(true);
+    paned.set_resize_start_child(false);
+    paned.set_shrink_start_child(false);
     paned.set_shrink_end_child(true);
 
     let status = gtk::Label::builder()

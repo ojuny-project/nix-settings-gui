@@ -304,9 +304,8 @@ pub(super) fn build_control_row(
     row.set_hexpand(true);
     row.set_halign(gtk::Align::Fill);
 
-    let expands = editor.wants_width();
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    labels.set_hexpand(!expands);
+    labels.set_hexpand(true);
     let label_text = record
         .spec
         .label
@@ -318,9 +317,6 @@ pub(super) fn build_control_row(
         .xalign(0.0)
         .wrap(true)
         .build();
-    if expands {
-        name.set_max_width_chars(48);
-    }
     let live = live_marker(record);
     live.set_visible(
         app.config.borrow().live_apply
@@ -357,11 +353,9 @@ pub(super) fn build_control_row(
     slot.set_valign(gtk::Align::Center);
     if inline {
         slot.set_halign(gtk::Align::End);
-    } else if expands {
+    } else {
         slot.set_hexpand(true);
         slot.set_halign(gtk::Align::Fill);
-    } else {
-        slot.set_halign(gtk::Align::End);
     }
 
     let reset = gtk::Button::from_icon_name("edit-undo-symbolic");
