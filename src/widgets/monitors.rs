@@ -541,7 +541,7 @@ pub(crate) fn build_monitors(record: &Record) -> Editor {
     let last_size = Rc::new(Cell::new((640.0f64, 400.0f64)));
 
     let canvas = gtk::DrawingArea::builder()
-        .content_width(640)
+        .content_width(1)
         .content_height(400)
         .build();
     canvas.set_hexpand(true);

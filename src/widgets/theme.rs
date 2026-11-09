@@ -510,7 +510,8 @@ fn palette_strip(index: usize, height: i32) -> gtk::DrawingArea {
         })
         .collect();
     let area = gtk::DrawingArea::builder().content_height(height).build();
-    area.set_size_request(16 * 14, height);
+    area.set_size_request(-1, height);
+    area.set_hexpand(true);
     area.set_draw_func(move |_, cr, width, height| {
         let step = width as f64 / 16.0;
         for (index, color) in colors.iter().enumerate() {
