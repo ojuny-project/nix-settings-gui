@@ -203,7 +203,6 @@ fn rebuild_pages(app: &Rc<App>) {
     let started = crate::timing::start();
     let old_pages = app.pages.take();
     for page in &old_pages {
-        app.stack.remove(&page.root);
     }
     drop(old_pages);
 
@@ -213,12 +212,11 @@ fn rebuild_pages(app: &Rc<App>) {
     if let Some(file) = select_menu_file(&menus, &current, None) {
         if let Some(menu) = menus.iter().find(|menu| menu.file == file) {
             let page = build_page(app, menu);
-            app.stack.add_named(&page.root, Some(&menu.file));
             pages.push(page);
         }
         if !app.showing_inputs.get() {
             app.inputs_list.unselect_all();
-            app.stack.set_visible_child_name(&file);
+            app.show_page(&file);
         }
         *app.current_file.borrow_mut() = file.clone();
         select_file(app, &file);
@@ -240,7 +238,6 @@ pub(super) fn ensure_page(app: &Rc<App>, file: &str) {
         return;
     };
     let page = build_page(app, &menu);
-    app.stack.add_named(&page.root, Some(&menu.file));
     app.pages.borrow_mut().push(page);
 }
 

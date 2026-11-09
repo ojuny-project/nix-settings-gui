@@ -172,11 +172,10 @@ fn build_ui(
     sidebar.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     sidebar.append(&inputs_list);
 
-    let stack = gtk::Stack::new();
+    let stack = gtk::Box::new(gtk::Orientation::Vertical, 0);
     stack.set_hexpand(true);
     stack.set_vexpand(true);
     let inputs_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    stack.add_named(&inputs_page, Some(inputs::INPUTS_PAGE));
 
     let nixd_banner = adw::Banner::new("");
     nixd_banner.set_revealed(false);
@@ -411,6 +410,9 @@ fn build_ui(
         pending_rebuild: Cell::new(false),
         watchers: RefCell::new(Vec::new()),
     });
+    if show_inputs_by_default {
+        app_state.show_page(inputs::INPUTS_PAGE);
+    }
 
     {
         let config = app_state.config.borrow();
@@ -449,7 +451,7 @@ fn build_ui(
             .connect_row_activated(move |_, _| {
                 app.showing_inputs.set(true);
                 app.list.unselect_all();
-                app.stack.set_visible_child_name(inputs::INPUTS_PAGE);
+                app.show_page(inputs::INPUTS_PAGE);
                 inputs::refresh(&app);
             });
     }
@@ -555,7 +557,7 @@ fn wire(
             app.showing_inputs.set(false);
             app.inputs_list.unselect_all();
             ensure_page(&app, name.as_str());
-            app.stack.set_visible_child_name(name.as_str());
+            app.show_page(name.as_str());
             *app.current_file.borrow_mut() = name.to_string();
             apply_control_filter(&app);
             query_current_page(&app, &app.tx);

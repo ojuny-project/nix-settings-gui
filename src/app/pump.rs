@@ -93,7 +93,7 @@ fn finish_scan(
     inputs::update_warning(app);
     if app.showing_inputs.get() {
         inputs::refresh(app);
-        app.stack.set_visible_child_name(inputs::INPUTS_PAGE);
+        app.show_page(inputs::INPUTS_PAGE);
     }
     scan_finished(app);
 }

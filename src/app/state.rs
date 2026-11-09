@@ -233,7 +233,7 @@ pub(super) struct App {
     pub(super) inputs_page: gtk::Box,
     pub(super) inputs_warning: gtk::Image,
     pub(super) showing_inputs: Cell<bool>,
-    pub(super) stack: gtk::Stack,
+    pub(super) stack: gtk::Box,
     pub(super) nixd_banner: adw::Banner,
     pub(super) status: gtk::Label,
     pub(super) spinner: gtk::Spinner,
@@ -297,6 +297,18 @@ pub(super) struct App {
 }
 
 impl App {
+    /// Show one page by clearing the host and attaching only that page.
+    pub(super) fn show_page(&self, name: &str) {
+        while let Some(child) = self.stack.first_child() {
+            self.stack.remove(&child);
+        }
+        if name == super::inputs::INPUTS_PAGE {
+            self.stack.append(&self.inputs_page);
+        } else if let Some(page) = self.pages.borrow().iter().find(|page| page.file == name) {
+            self.stack.append(&page.root);
+        }
+    }
+
     /// Drop the wallpaper preset result so the next picker rebuild fetches a
     /// fresh set. The generation keeps an older in-flight result from matching.
     pub(super) fn invalidate_wallpaper(&self) {
