@@ -219,6 +219,23 @@ impl Editor {
         }
     }
 
+    /// Whether this editor holds a text input or another width-hungry control
+    /// and should be stretched to fill the space left of its row label.
+    pub fn wants_width(&self) -> bool {
+        matches!(
+            self,
+            Editor::Text(_)
+                | Editor::Path(_)
+                | Editor::Multiline { .. }
+                | Editor::Raw { .. }
+                | Editor::Package { .. }
+                | Editor::List { .. }
+                | Editor::ModuleList { .. }
+                | Editor::Submodule { .. }
+                | Editor::Slider(_)
+        )
+    }
+
     /// Render the editor's current state back to Nix source.
     pub fn to_nix(&self) -> String {
         match self {
