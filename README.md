@@ -26,6 +26,11 @@ Enable the NixOS module in `configuration.nix`:
 services.nix-settings-gui.enable = true;
 ```
 
+The ojuny-specific bar, dock, menu, plugins, grid, and docker widgets are
+built by default. Set `services.nix-settings-gui.withOjunyWidgets = false` to
+build without them. The flake also exports `packages.<system>.nix-settings-gui-minimal`
+for the same build.
+
 Rebuild with `nixos-rebuild switch`. The package installs `nix-settings-gui` in
 `environment.systemPackages` and adds a desktop entry. The flake exports
 `nixosModules.default`; it does not provide a Home Manager module.
@@ -38,6 +43,11 @@ nix run github:ojuny-project/nix-settings-gui
 
 The settings window opens. Launch arguments are `--page <regex>` and
 `--descriptors <file>`.
+
+The flake also builds `nix-settings-backend`, a local JSON-RPC endpoint for
+frontends that cannot link the Rust engine. Run it with `--stdio` for an
+embedding client or `--http 127.0.0.1:0` for a loopback listener. The HTTP mode
+reads or creates a token under `$XDG_STATE_HOME/nix-settings-backend/token`.
 
 ## Quickstart
 

@@ -5,7 +5,7 @@ use super::names::widget_display_name;
 use super::nix::truthy;
 use super::tile::{attach_tile_dnd, make_field_for_preset, make_widget_tile, WidgetTile};
 use super::tile_nix::{parse_string_list, valid_widget_id};
-use crate::app::menu::pick_icon_name;
+use crate::widgets::menu_icon::pick_icon_name;
 use crate::dsl::{PresetFieldSpec, WidgetPresetSpec};
 use crate::scan;
 use gtk::prelude::*;

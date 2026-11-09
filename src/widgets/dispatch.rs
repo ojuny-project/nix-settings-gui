@@ -1,3 +1,4 @@
+#[cfg(feature = "ojuny-widgets")]
 use super::bar::{build_bar, build_dock};
 use super::basic::{
     build_color, build_dropdown, build_entry, build_list, build_multiline, build_package_editor,
@@ -6,14 +7,17 @@ use super::basic::{
 use super::context::BuildContext;
 use super::context::ModuleKind;
 use super::cursor_theme::build_cursor_theme;
+#[cfg(feature = "ojuny-widgets")]
 use super::docker::build_docker;
 use super::editor::Editor;
 use super::facter::build_facter;
 use super::file::build_file;
 use super::font::build_font;
+#[cfg(feature = "ojuny-widgets")]
 use super::grid::build_grid_configuration;
 use super::icon_theme::build_icon_theme;
 use super::keybinds::build_keybinds;
+#[cfg(feature = "ojuny-widgets")]
 use super::menu::build_menu;
 use super::module_list::build_module_list;
 use super::monitors::build_monitors;
@@ -119,7 +123,13 @@ fn build_editor(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> 
         WidgetKind::Color => Editor::Color(build_color(value_text)),
         WidgetKind::Submodule => build_submodule(record, type_str, ctx),
         WidgetKind::HorizontalSubmodule => build_horizontal_submodule(record, type_str, ctx),
+        #[cfg(feature = "ojuny-widgets")]
         WidgetKind::GridConfiguration => build_grid_configuration(record, ctx),
+        #[cfg(not(feature = "ojuny-widgets"))]
+        WidgetKind::GridConfiguration => {
+            let (view, root) = build_raw(value_text, spec);
+            Editor::Raw { view, root }
+        }
         WidgetKind::TableAttrset => build_table(record, ctx, false),
         WidgetKind::TableList => build_table(record, ctx, true),
         WidgetKind::Theme => build_theme(value_text),
@@ -132,13 +142,28 @@ fn build_editor(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> 
         WidgetKind::File => build_file(record, value_text, ctx),
         WidgetKind::Keybinds => build_keybinds(record),
         WidgetKind::Monitors => build_monitors(record),
+        #[cfg(feature = "ojuny-widgets")]
         WidgetKind::Menu => build_menu(record, ctx),
+        #[cfg(feature = "ojuny-widgets")]
         WidgetKind::Plugins => crate::plugin_list::build(record, ctx),
+        #[cfg(feature = "ojuny-widgets")]
         WidgetKind::Bar => build_bar(record, ctx),
+        #[cfg(feature = "ojuny-widgets")]
         WidgetKind::Dock => build_dock(record, ctx),
+        #[cfg(not(feature = "ojuny-widgets"))]
+        WidgetKind::Menu | WidgetKind::Plugins | WidgetKind::Bar | WidgetKind::Dock => {
+            let (view, root) = build_raw(value_text, spec);
+            Editor::Raw { view, root }
+        }
         WidgetKind::Users => build_users(record, ctx),
         WidgetKind::Facter => build_facter(record, type_str, ctx),
+        #[cfg(feature = "ojuny-widgets")]
         WidgetKind::Docker => build_docker(record),
+        #[cfg(not(feature = "ojuny-widgets"))]
+        WidgetKind::Docker => {
+            let (view, root) = build_raw(value_text, spec);
+            Editor::Raw { view, root }
+        }
         WidgetKind::SecureBoot => build_secureboot(record, ctx),
         WidgetKind::Raw => {
             let (view, root) = build_raw(value_text, spec);

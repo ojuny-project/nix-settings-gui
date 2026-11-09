@@ -1,8 +1,12 @@
+#[cfg(feature = "ojuny-widgets")]
 use super::bar::{bar_nix, dock_nix};
 use super::context::ChangeHook;
+#[cfg(feature = "ojuny-widgets")]
 use super::docker::{docker_nix, docker_unchanged, DockerRow};
+#[cfg(feature = "ojuny-widgets")]
 use super::grid::{grid_nix, grid_unchanged, GridLayoutState};
 use super::keybinds::{connect_keybind_row, csv_matches_list_source, keybinds_nix, KeybindRow};
+#[cfg(feature = "ojuny-widgets")]
 use super::menu::{connect_menu_row, menu_rows_nix, menu_rows_unchanged, MenuRow};
 use super::monitors::{connect_monitor_row, monitor_row_unchanged, monitors_nix, MonitorRow};
 use super::nix::{
@@ -12,7 +16,9 @@ use super::nix::{
 };
 use super::style_choice::StyleChoice;
 use super::table::{connect_table_row, table_nix, TableRow};
+#[cfg(feature = "ojuny-widgets")]
 use super::tile_list::WidgetTileList;
+#[cfg(feature = "ojuny-widgets")]
 use super::tile_nix::tiles_unchanged;
 use super::users::{self, UserRow};
 use crate::edit::PendingEdit;
@@ -104,14 +110,17 @@ pub enum Editor {
         rows: Rc<RefCell<Vec<MonitorRow>>>,
         on_change: ChangeHook,
     },
+    #[cfg(feature = "ojuny-widgets")]
     Menu {
         root: gtk::Box,
         rows: Rc<RefCell<Vec<MenuRow>>>,
         on_change: ChangeHook,
     },
+    #[cfg(feature = "ojuny-widgets")]
     Plugins {
         list: crate::plugin_list::PluginList,
     },
+    #[cfg(feature = "ojuny-widgets")]
     Bar {
         root: gtk::Box,
         left: WidgetTileList,
@@ -123,6 +132,7 @@ pub enum Editor {
         extras: Vec<(Record, Editor)>,
         on_change: ChangeHook,
     },
+    #[cfg(feature = "ojuny-widgets")]
     Dock {
         root: gtk::Box,
         widgets: WidgetTileList,
@@ -130,6 +140,7 @@ pub enum Editor {
         extras: Vec<(Record, Editor)>,
         on_change: ChangeHook,
     },
+    #[cfg(feature = "ojuny-widgets")]
     Grid {
         root: gtk::Box,
         state: Rc<GridLayoutState>,
@@ -147,6 +158,7 @@ pub enum Editor {
         combo: gtk::DropDown,
         choices: Vec<String>,
     },
+    #[cfg(feature = "ojuny-widgets")]
     Docker {
         root: gtk::Box,
         rows: Rc<RefCell<Vec<DockerRow>>>,
@@ -188,13 +200,19 @@ impl Editor {
             Editor::Icon { root, .. } => root.clone().upcast(),
             Editor::Keybinds { root, .. } => root.clone().upcast(),
             Editor::Monitors { root, .. } => root.clone().upcast(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Menu { root, .. } => root.clone().upcast(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Plugins { list, .. } => list.root(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Bar { root, .. } => root.clone().upcast(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Dock { root, .. } => root.clone().upcast(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Grid { root, .. } => root.clone().upcast(),
             Editor::Users { root, .. } => root.clone().upcast(),
             Editor::Facter { root, .. } => root.clone().upcast(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Docker { root, .. } => root.clone().upcast(),
             Editor::SecureBoot { root, .. } => root.clone().upcast(),
             Editor::Raw { root, .. } => root.clone().upcast(),
@@ -267,8 +285,11 @@ impl Editor {
             Editor::Icon { ui, .. } => ui.borrow().nix_value(),
             Editor::Keybinds { rows, .. } => keybinds_nix(&rows.borrow()),
             Editor::Monitors { rows, .. } => monitors_nix(&rows.borrow()),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Menu { rows, .. } => menu_rows_nix(&rows.borrow()),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Plugins { list, .. } => list.to_nix(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Bar {
                 left,
                 right,
@@ -287,18 +308,21 @@ impl Editor {
                 *center_present,
                 extras,
             ),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Dock {
                 widgets,
                 widgets_present,
                 extras,
                 ..
             } => dock_nix(widgets, *widgets_present, extras),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Grid { state, .. } => grid_nix(state),
             Editor::Users { .. } => users::users_nix(self),
             Editor::Facter { combo, choices, .. } => choices
                 .get(combo.selected() as usize)
                 .cloned()
                 .unwrap_or_else(|| quote("auto")),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Docker { .. } => docker_nix(self),
             Editor::SecureBoot { toggle, .. } => {
                 if toggle.is_active() { "true" } else { "false" }.to_string()
@@ -384,8 +408,11 @@ impl Editor {
                         .all(|f| f.editor.unchanged(&f.orig_value))
             }),
             Editor::Monitors { rows, .. } => rows.borrow().iter().all(monitor_row_unchanged),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Menu { rows, .. } => menu_rows_unchanged(rows),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Plugins { list, .. } => list.unchanged(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Bar {
                 left,
                 right,
@@ -400,6 +427,7 @@ impl Editor {
                         .iter()
                         .all(|(record, editor)| editor.unchanged(&record.value))
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Dock {
                 widgets, extras, ..
             } => {
@@ -415,10 +443,12 @@ impl Editor {
                 home,
                 ..
             } => users::users_unchanged(rows, *orig_count, *home_manager, home.as_ref()),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Docker {
                 rows, orig_count, ..
             } => docker_unchanged(rows, *orig_count),
             Editor::SecureBoot { toggle, .. } => toggle.is_active() == truthy(original),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Grid { state, .. } => {
                 grid_unchanged(state)
                     && state.tiles.borrow().iter().all(|tile| {
@@ -486,6 +516,7 @@ impl Editor {
             }
             return out;
         }
+        #[cfg(feature = "ojuny-widgets")]
         if let Editor::Grid { state, .. } = self {
             let mut out = Vec::new();
             if !grid_unchanged(state) {
@@ -606,6 +637,7 @@ impl Editor {
                     connect_monitor_row(row, update);
                 }
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Menu {
                 rows, on_change, ..
             } => {
@@ -614,7 +646,9 @@ impl Editor {
                     connect_menu_row(row, update);
                 }
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Plugins { list, .. } => list.connect_changed(update),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Bar {
                 extras, on_change, ..
             } => {
@@ -623,6 +657,7 @@ impl Editor {
                     editor.connect_changed(update);
                 }
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Dock {
                 extras, on_change, ..
             } => {
@@ -638,6 +673,7 @@ impl Editor {
                 let update = update.clone();
                 combo.connect_selected_notify(move |_| update());
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Docker { on_change, .. } => {
                 *on_change.borrow_mut() = Some(update.clone());
             }
@@ -645,6 +681,7 @@ impl Editor {
                 let update = update.clone();
                 toggle.connect_active_notify(move |_| update());
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::Grid { state, .. } => {
                 *state.on_change.borrow_mut() = Some(update.clone());
                 for (_, editor) in &state.extras {

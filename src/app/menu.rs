@@ -118,26 +118,10 @@ fn menu_matches(menu: &crate::model::MenuModel, query: &str) -> bool {
         .any(|record| super::controls::record_matches_query(record, query))
 }
 
-const FALLBACK_MENU_ICON: &str = "preferences-system-symbolic";
-
-pub(crate) fn pick_icon_name(
-    has_icon: impl Fn(&str) -> bool,
-    icon: Option<&str>,
-) -> Option<String> {
-    let name = icon?;
-    if has_icon(name) {
-        return Some(name.to_string());
-    }
-    if has_icon(FALLBACK_MENU_ICON) {
-        return Some(FALLBACK_MENU_ICON.to_string());
-    }
-    None
-}
-
 fn resolve_menu_icon(icon: Option<&str>) -> Option<String> {
     let display = gtk::gdk::Display::default()?;
     let theme = gtk::IconTheme::for_display(&display);
-    pick_icon_name(|name| theme.has_icon(name), icon)
+    crate::widgets::menu_icon::pick_icon_name(|name| theme.has_icon(name), icon)
 }
 
 pub(super) fn rebuild_menu_list(app: &Rc<App>) {
@@ -260,6 +244,7 @@ pub(super) fn ensure_page(app: &Rc<App>, file: &str) {
     app.pages.borrow_mut().push(page);
 }
 
+#[cfg(feature = "ojuny-widgets")]
 fn dashboard_card_option(path: &str) -> bool {
     let Some(position) = path.find("dashOptions.") else {
         return false;
@@ -270,6 +255,11 @@ fn dashboard_card_option(path: &str) -> bool {
         return false;
     };
     key != "widgets" && crate::widgets::is_dashboard_card_id(card)
+}
+
+#[cfg(not(feature = "ojuny-widgets"))]
+fn dashboard_card_option(_path: &str) -> bool {
+    false
 }
 
 fn build_page(app: &Rc<App>, menu: &crate::model::MenuModel) -> MenuPage {
@@ -532,6 +522,7 @@ fn preceding_group(menu: &MenuModel, offset: usize) -> String {
 mod tests {
     use super::*;
     use crate::dsl::MenuSpec;
+    use crate::widgets::menu_icon::pick_icon_name;
 
     fn menu(category: &str, order: i64, name: &str, file: &str) -> MenuModel {
         MenuModel {

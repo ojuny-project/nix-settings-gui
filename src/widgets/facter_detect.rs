@@ -1343,24 +1343,24 @@ pub(crate) const VENDOR_ALIASES: &[(&str, &str)] = &[
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GpuDetection {
-    pub(crate) layout: String,
-    pub(crate) source: String,
-    pub(crate) managed: bool,
+pub struct GpuDetection {
+    pub layout: String,
+    pub source: String,
+    pub managed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HardwareDetection {
-    pub(crate) model: String,
-    pub(crate) vendor: String,
-    pub(crate) base_profile: String,
-    pub(crate) profile: String,
-    pub(crate) state: String,
-    pub(crate) gpu: GpuDetection,
+pub struct HardwareDetection {
+    pub model: String,
+    pub vendor: String,
+    pub base_profile: String,
+    pub profile: String,
+    pub state: String,
+    pub gpu: GpuDetection,
 }
 
 impl HardwareDetection {
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             model: "unknown".to_string(),
             vendor: "unknown".to_string(),
@@ -1376,7 +1376,7 @@ impl HardwareDetection {
     }
 }
 
-pub(crate) fn detect_report(text: &str) -> Option<HardwareDetection> {
+pub fn detect_report(text: &str) -> Option<HardwareDetection> {
     let report: serde_json::Value = serde_json::from_str(text).ok()?;
     Some(detect(&report))
 }

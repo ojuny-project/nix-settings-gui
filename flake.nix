@@ -99,8 +99,13 @@
           glib
         ];
 
-        nix-settings-gui = pkgs.rustPlatform.buildRustPackage {
-          pname = "nix-settings-gui";
+        mkPackage =
+          {
+            withOjunyWidgets ? true,
+            pname ? "nix-settings-gui",
+          }:
+          pkgs.rustPlatform.buildRustPackage {
+          pname = pname;
           version = "0.1.0";
           src = lib.fileset.toSource {
             root = ./.;
@@ -119,6 +124,7 @@
             ];
           };
           cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = lib.optionals (!withOjunyWidgets) [ "--no-default-features" ];
 
           TINTED_SCHEMES_DIR = "${tinted-theming}";
 
@@ -143,10 +149,16 @@
             platforms = platforms.linux;
           };
         };
+
+        nix-settings-gui = mkPackage { };
+        nix-settings-gui-minimal = mkPackage {
+          withOjunyWidgets = false;
+          pname = "nix-settings-gui-minimal";
+        };
       in
       {
         packages = {
-          inherit nix-settings-gui;
+          inherit nix-settings-gui nix-settings-gui-minimal;
           default = nix-settings-gui;
         }
         // (
@@ -163,6 +175,11 @@
           program = "${nix-settings-gui}/bin/nix-settings-gui";
         };
 
+        apps.backend = {
+          type = "app";
+          program = "${nix-settings-gui}/bin/nix-settings-backend";
+        };
+
         apps.ci = {
           type = "app";
           program = "${
@@ -176,8 +193,14 @@
           }/bin/ci";
         };
 
+        checks.minimal = pkgs.runCommand "check-minimal" { } ''
+          echo ${self.packages.${system}.nix-settings-gui-minimal} >/dev/null
+          touch $out
+        '';
+
         checks.default = pkgs.runCommand "check-default" { } ''
           echo ${self.packages.${system}.default} >/dev/null
+          echo ${self.checks.${system}.minimal} >/dev/null
           touch $out
         '';
 

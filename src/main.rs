@@ -23,7 +23,9 @@ mod monitor_detect;
 mod nixd;
 mod nixpkgs;
 mod passwords;
+#[cfg(feature = "ojuny-widgets")]
 mod plugin_list;
+#[cfg(feature = "ojuny-widgets")]
 mod plugin_schema;
 mod ref_suggest;
 mod scan;

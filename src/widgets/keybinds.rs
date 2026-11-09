@@ -4,7 +4,7 @@ use super::fields::{
     attrset_field_nix, capture_field_values, csv_list, dim_line, dim_line_with_help, field,
     make_attrset_field, popout_button_bar, restore_field_values, AttrsetField,
 };
-use super::menu::PopoutSnapshot;
+use super::popout::PopoutSnapshot;
 use super::names::{bind_display_label, keybind_field_help};
 use super::nix::{attr_key, entry_text, parse_string_literal, quote};
 use crate::dsl::OptionSpec;

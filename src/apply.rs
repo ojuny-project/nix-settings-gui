@@ -32,7 +32,18 @@ pub fn substitute(template: &str, value: &str) -> String {
 /// The plain text of a Nix literal: a quoted string loses its quotes, so
 /// `"dark"` becomes `dark` and a number stays a number.
 pub fn plain_value(nix: &str) -> String {
-    crate::widgets::nix::parse_string_literal(nix)
+    let text = nix.trim();
+    if let Some(inner) = text.strip_prefix("''").and_then(|value| value.strip_suffix("''")) {
+        return inner.trim_matches('\n').to_string();
+    }
+    if text.len() >= 2 && text.starts_with('"') && text.ends_with('"') {
+        let inner = &text[1..text.len() - 1];
+        return inner
+            .replace("\\\"", "\"")
+            .replace("\\${", "${")
+            .replace("\\\\", "\\");
+    }
+    text.to_string()
 }
 
 #[cfg(test)]

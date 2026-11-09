@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "ojuny-widgets"), allow(dead_code))]
+
 use super::basic::build_raw;
 use super::context::{BuildContext, ChangeHook};
 use super::dispatch::{build, full_path};

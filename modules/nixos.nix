@@ -6,14 +6,22 @@ self: {
 }:
 with lib; let
   cfg = config.services.nix-settings-gui;
-  package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
 in {
   options.services.nix-settings-gui = {
     enable = mkEnableOption "nix-settings-gui, a comment-driven settings GUI for Nix";
 
+    withOjunyWidgets = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Build with the ojuny-specific bar, dock, menu, plugins, grid and docker widgets.";
+    };
+
     package = mkOption {
       type = types.package;
-      default = package;
+      default =
+        if cfg.withOjunyWidgets
+        then self.packages.${pkgs.stdenv.hostPlatform.system}.default
+        else self.packages.${pkgs.stdenv.hostPlatform.system}.nix-settings-gui-minimal;
       description = "The nix-settings-gui package to use.";
     };
   };

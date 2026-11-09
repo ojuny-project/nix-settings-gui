@@ -168,6 +168,7 @@ pub(crate) fn field_caption(name: &str) -> String {
     if name == "_order" {
         return "Position".to_string();
     }
+    #[cfg(feature = "ojuny-widgets")]
     if let Some(label) = super::dms_catalog::settings_label(name) {
         return label.to_string();
     }

@@ -285,7 +285,7 @@ mod tests {
             panic!("01-bar.nix parses");
         };
         let presets = scan::find_widget_presets(&bar, root.syntax());
-        assert_eq!(presets.len(), 32, "bar preset count");
+        assert_eq!(presets.len(), 34, "bar preset count");
         assert_eq!(
             presets
                 .iter()
