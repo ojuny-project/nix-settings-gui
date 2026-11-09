@@ -16,7 +16,7 @@ fn installed_families() -> HashSet<String> {
 }
 
 fn styled_label(family: &str, size: i32, text: &str) -> gtk::Label {
-    let label = gtk::Label::builder().label(text).xalign(0.0).build();
+    let label = gtk::Label::builder().label(text).xalign(0.0).wrap(true).max_width_chars(24).build();
     let mut description = pango::FontDescription::new();
     description.set_family(family);
     description.set_absolute_size(size as f64 * pango::SCALE as f64);
@@ -73,11 +73,11 @@ fn preview(
         sample.append(&styled_label(family, 16, "The quick brown fox  {}[]()"));
         root.append(&sample);
     } else if let Some(preview) = preview {
-        root.append(&style_catalog::texture_widget(preview, 420, 72));
+        root.append(&style_catalog::texture_widget(preview, 1, 72));
     } else {
         root.append(&style_choice::placeholder(
             "Preview is available after the package is installed",
-            420,
+            1,
             72,
         ));
     }

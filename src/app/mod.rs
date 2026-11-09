@@ -99,11 +99,14 @@ fn build_ui(
 
     let flake_combo = gtk::ComboBoxText::new();
     flake_combo.set_tooltip_text(Some("Flake or config directory to open"));
+    flake_combo.set_size_request(100, -1);
 
     let search = gtk::SearchEntry::builder()
         .placeholder_text("Search settings")
+        .width_chars(8)
         .hexpand(true)
         .build();
+    search.set_size_request(60, -1);
 
     let system_toggle = gtk::ToggleButton::builder()
         .label("System only")
@@ -120,6 +123,7 @@ fn build_ui(
         .build();
 
     let title_widget = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    title_widget.set_hexpand(true);
     title_widget.append(&title);
     title_widget.append(&flake_combo);
     title_widget.append(&search);
@@ -226,6 +230,7 @@ fn build_ui(
     let status = gtk::Label::builder()
         .xalign(0.0)
         .hexpand(true)
+        .max_width_chars(1)
         .css_classes(["dim-label"])
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .build();
@@ -239,7 +244,7 @@ fn build_ui(
 
     let progress = gtk::ProgressBar::new();
     progress.set_visible(false);
-    progress.set_width_request(160);
+    progress.set_width_request(1);
     progress.set_valign(gtk::Align::Center);
 
     let configure_btn = gtk::Button::with_label("Configure");

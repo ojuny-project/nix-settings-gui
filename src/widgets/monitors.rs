@@ -322,11 +322,13 @@ pub(crate) fn make_monitor_row(scan_row: &scan::TableRowScan, ctx: &BuildContext
     let number_spin = |value: &str, default: f64, min: f64, max: f64, step: f64| {
         let spin = gtk::SpinButton::with_range(min, max, step);
         spin.set_digits(0);
+        spin.set_width_chars(6);
         spin.set_value(value.parse::<f64>().unwrap_or(default));
         spin
     };
 
     let name = gtk::Entry::new();
+    name.set_width_chars(10);
     name.set_text(entry_text(get("name")).as_str());
     name.set_tooltip_text(Some(
         "Matcher: this rule applies to the output with this name. Regex supported.",

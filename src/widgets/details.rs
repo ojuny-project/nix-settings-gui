@@ -33,7 +33,6 @@ impl InfoDetails {
             .wrap_mode(gtk::pango::WrapMode::WordChar)
             .visible(description.is_some_and(|text| !text.is_empty()))
             .css_classes(["dim-label", "caption"])
-            .width_chars(48)
             .build();
 
         let origin_text = if origin.is_empty() {

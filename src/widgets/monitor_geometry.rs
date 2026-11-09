@@ -27,7 +27,7 @@ pub(crate) fn effective_size(w: f64, h: f64, rr: f64) -> (f64, f64) {
     }
 }
 
-pub(crate) const SNAP_TOLERANCE: f64 = 12.0;
+pub(crate) const SNAP_TOLERANCE: f64 = 50.0;
 
 /// The one shared geometry function: x/y stay physical, the size becomes the
 /// virtual footprint (`effective_size / row.scale`). Every consumer calls this
