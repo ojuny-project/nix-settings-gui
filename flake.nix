@@ -162,10 +162,24 @@
           default = nix-settings-gui;
         }
         // (
-          if binaryInfo != null && binaryInfo.system == system then
+          if binaryInfo != null && binaryInfo.system == system && binaryInfo.latest != "" then
             {
               nix-settings-gui-binary = mkBinary { inherit system; };
             }
+            // (
+              if
+                binaryInfo.releases.${binaryInfo.latest}.packages
+                ? nix-settings-gui-minimal
+              then
+                {
+                  nix-settings-gui-minimal-binary = mkBinary {
+                    inherit system;
+                    package = "nix-settings-gui-minimal";
+                  };
+                }
+              else
+                { }
+            )
           else
             { }
         );
@@ -200,7 +214,6 @@
 
         checks.default = pkgs.runCommand "check-default" { } ''
           echo ${self.packages.${system}.default} >/dev/null
-          echo ${self.checks.${system}.minimal} >/dev/null
           touch $out
         '';
 

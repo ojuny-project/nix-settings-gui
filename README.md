@@ -74,6 +74,8 @@ The marker reference covers widgets, choices, tables, and templates in
 
 ## Limits
 
+- The ojuny-specific widgets are optional. Build with `--no-default-features`
+  or use the `nix-settings-gui-minimal` package to leave them out.
 - Options come from the module system, so annotations inside `lib.mkMerge`, a
   list of attribute sets, `map`, or `forEach` are dropped.
 - Freeform settings need a descriptor sidecar.
@@ -82,7 +84,8 @@ The marker reference covers widgets, choices, tables, and templates in
 ## Releases
 
 A `v*` tag, a manual workflow run, or a commit on `main` whose title starts with
-a version such as `v0.1.0` builds `nix-settings-gui.bin` and `nix-settings-gui-flake.tar.gz`.
+a version such as `v0.1.0` builds `nix-settings-gui.bin`, the minimal
+`nix-settings-gui-minimal.bin`, and `nix-settings-gui-flake.tar.gz`.
 
 The release flake installs the prebuilt bundle without compiling:
 
@@ -92,6 +95,8 @@ inputs.nix-settings-gui.url =
 ```
 
 Then add `inputs.nix-settings-gui.packages.${pkgs.system}.nix-settings-gui` to `environment.systemPackages`.
+The release flake also exposes `nix-settings-gui-minimal` for the build without
+the ojuny-specific widgets.
 
 The generated flake exposes packages only. Use the source flake when you need
 the NixOS module.

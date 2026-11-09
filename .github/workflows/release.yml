@@ -84,11 +84,14 @@ jobs:
           nix bundle .#packages.x86_64-linux.nix-settings-gui -o dist/nix-settings-gui
           cp -L dist/nix-settings-gui dist/nix-settings-gui.bin
           rm dist/nix-settings-gui
+          nix bundle .#packages.x86_64-linux.nix-settings-gui-minimal -o dist/nix-settings-gui-minimal
+          cp -L dist/nix-settings-gui-minimal dist/nix-settings-gui-minimal.bin
+          rm dist/nix-settings-gui-minimal
 
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum nix-settings-gui.bin > SHA256SUMS
+          sha256sum nix-settings-gui.bin nix-settings-gui-minimal.bin > SHA256SUMS
 
       # The release also publishes a small flake. Add it as an input and use
       # packages.<system>.nix-settings-gui to fetch and install the bundle
@@ -98,6 +101,7 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           sha=$(sha256sum dist/nix-settings-gui.bin | cut -d' ' -f1)
+          sha_minimal=$(sha256sum dist/nix-settings-gui-minimal.bin | cut -d' ' -f1)
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
           mkdir -p dist/flake
           cp "$GITHUB_WORKSPACE/org.nix_settings_gui.NixSettingsGui.desktop" dist/flake/
@@ -109,24 +113,27 @@ jobs:
               let
                 systems = [ "x86_64-linux" ];
                 forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.\${system});
-                mk = pkgs: pkgs.stdenvNoCC.mkDerivation {
-                  pname = "nix-settings-gui";
-                  version = "${TAG}";
-                  src = pkgs.fetchurl {
-                    url = "${base}/nix-settings-gui.bin";
-                    sha256 = "${sha}";
+                mk =
+                  { pname, file, hash }:
+                  pkgs: pkgs.stdenvNoCC.mkDerivation {
+                    inherit pname;
+                    version = "${TAG}";
+                    src = pkgs.fetchurl {
+                      url = "${base}/\${file}";
+                      sha256 = hash;
+                    };
+                    dontUnpack = true;
+                    dontFixup = true;
+                    installPhase = ''
+                      install -Dm755 \$src \$out/bin/nix-settings-gui
+                      install -Dm644 \${./org.nix_settings_gui.NixSettingsGui.desktop} \$out/share/applications/org.nix_settings_gui.NixSettingsGui.desktop
+                    '';
                   };
-                  dontUnpack = true;
-                  dontFixup = true;
-                  installPhase = ''
-                    install -Dm755 \$src \$out/bin/nix-settings-gui
-                    install -Dm644 \${./org.nix_settings_gui.NixSettingsGui.desktop} \$out/share/applications/org.nix_settings_gui.NixSettingsGui.desktop
-                  '';
-                };
               in {
                 packages = forAllSystems (pkgs: {
-                  nix-settings-gui = mk pkgs;
-                  default = mk pkgs;
+                  nix-settings-gui = mk { pname = "nix-settings-gui"; file = "nix-settings-gui.bin"; hash = "${sha}"; } pkgs;
+                  nix-settings-gui-minimal = mk { pname = "nix-settings-gui-minimal"; file = "nix-settings-gui-minimal.bin"; hash = "${sha_minimal}"; } pkgs;
+                  default = mk { pname = "nix-settings-gui"; file = "nix-settings-gui.bin"; hash = "${sha}"; } pkgs;
                 });
               };
           }
@@ -139,6 +146,7 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: |
             dist/nix-settings-gui.bin
+            dist/nix-settings-gui-minimal.bin
             dist/nix-settings-gui-flake.tar.gz
             dist/SHA256SUMS
 
@@ -146,7 +154,7 @@ jobs:
         if: needs.prepare.outputs.tag != ''
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
-          PACKAGES: nix-settings-gui.bin:nix-settings-gui
+          PACKAGES: nix-settings-gui.bin:nix-settings-gui nix-settings-gui-minimal.bin:nix-settings-gui-minimal
         run: |
           git fetch origin main
           git checkout -B main origin/main
