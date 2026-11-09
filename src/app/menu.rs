@@ -373,7 +373,7 @@ fn build_page(app: &Rc<App>, menu: &crate::model::MenuModel) -> MenuPage {
 
     let scrolled = gtk::ScrolledWindow::builder()
         .child(&content)
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_width(false)
         .vexpand(true)
         .hexpand(true)

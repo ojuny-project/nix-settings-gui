@@ -386,7 +386,7 @@ pub(super) fn refresh(app: &Rc<App>) {
 fn scrolled(content: gtk::Box) -> gtk::ScrolledWindow {
     gtk::ScrolledWindow::builder()
         .child(&content)
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .hexpand(true)
         .build()

@@ -179,7 +179,7 @@ pub(crate) fn build_multiline(
     let root = gtk::ScrolledWindow::builder()
         .child(&view)
         .hexpand(true)
-        .min_content_width(440)
+        .min_content_width(1)
         .min_content_height((rows as i32) * 24)
         .has_frame(true)
         .build();
@@ -202,7 +202,7 @@ pub(crate) fn build_raw(
     let root = gtk::ScrolledWindow::builder()
         .child(&view)
         .hexpand(true)
-        .min_content_width(440)
+        .min_content_width(1)
         .min_content_height((rows as i32) * 22)
         .has_frame(true)
         .build();

@@ -466,7 +466,7 @@ impl WidgetTileList {
         picker_box.set_margin_bottom(12);
         picker_box.set_margin_start(12);
         picker_box.set_margin_end(12);
-        picker_box.set_size_request(320, -1);
+        picker_box.set_size_request(1, -1);
         let search = gtk::SearchEntry::new();
         search.set_placeholder_text(Some("Search widgets"));
         let picker_list = gtk::ListBox::new();

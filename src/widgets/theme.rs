@@ -152,7 +152,6 @@ struct ThemeListRows {
     scheme_rows: Vec<ThemeSchemeRow>,
     groups: Vec<ThemeGroup>,
     query: RefCell<String>,
-    natural_width: i32,
 }
 
 fn build_group_header(category: &str) -> (gtk::ListBoxRow, gtk::Button, gtk::Image) {
@@ -283,7 +282,6 @@ fn build_theme_list(list: &gtk::ListBox, metas: &[SchemeMeta], current: &str) ->
         let gap = groups[index].gap.clone();
         list.append(&gap);
     }
-    let (_, natural_width, _, _) = list.measure(gtk::Orientation::Horizontal, -1);
     for (index, group) in groups.iter().enumerate() {
         let expanded = selected_group == Some(index);
         group.expanded.set(expanded);
@@ -296,7 +294,6 @@ fn build_theme_list(list: &gtk::ListBox, metas: &[SchemeMeta], current: &str) ->
         scheme_rows,
         groups,
         query: RefCell::new(String::new()),
-        natural_width,
     });
     for (index, group) in rows.groups.iter().enumerate() {
         let rows = rows.clone();
@@ -399,7 +396,7 @@ pub(crate) fn build_theme(value_text: &str) -> Editor {
         .build();
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
-        .min_content_height(160)
+        .propagate_natural_width(false)
         .vexpand(true)
         .child(&list)
         .build();
@@ -408,9 +405,7 @@ pub(crate) fn build_theme(value_text: &str) -> Editor {
     left.set_hexpand(false);
     left.append(&search);
     left.append(&scrolled);
-    let (_, search_width, _, _) = search.measure(gtk::Orientation::Horizontal, -1);
-    let baseline = rows.natural_width.max(search_width).max(320);
-    left.set_size_request(baseline * 2, -1);
+    left.set_size_request(1, 1);
 
     let preview_host = gtk::Box::new(gtk::Orientation::Vertical, 6);
     let initial = {
@@ -545,7 +540,7 @@ fn raw_strip(index: usize) -> gtk::Box {
 
 fn sample_ui(index: usize) -> gtk::Box {
     let ui = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    ui.set_size_request(320, -1);
+    ui.set_size_request(1, 1);
     ui.add_css_class("theme-ui");
     ui.add_css_class(&format!("s{index}"));
 

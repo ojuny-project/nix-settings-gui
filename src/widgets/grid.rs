@@ -639,7 +639,7 @@ fn build_grid_popout(fields: &[GridField]) -> gtk::Popover {
     let popover = gtk::Popover::new();
     popover.set_position(gtk::PositionType::Right);
     let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    content.set_size_request(300, -1);
+    content.set_size_request(1, -1);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);

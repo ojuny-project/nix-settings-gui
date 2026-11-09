@@ -254,12 +254,11 @@ pub(crate) fn build(
 
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
-        .min_content_height(300)
         .vexpand(true)
         .child(&list)
         .build();
     let left = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    left.set_size_request(380, -1);
+    left.set_size_request(1, 1);
     left.append(&scrolled);
 
     let preview_host = gtk::Box::new(gtk::Orientation::Vertical, 0);

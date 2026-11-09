@@ -909,7 +909,7 @@ fn make_user_row(
     let ssh_root = gtk::ScrolledWindow::builder()
         .child(&ssh_keys)
         .hexpand(true)
-        .min_content_width(440)
+        .min_content_width(1)
         .min_content_height(72)
         .has_frame(true)
         .build();

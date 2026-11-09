@@ -33,7 +33,7 @@ pub(crate) fn build_grid_adder(
     content.set_margin_bottom(12);
     content.set_margin_start(12);
     content.set_margin_end(12);
-    content.set_size_request(320, -1);
+    content.set_size_request(1, -1);
     let search = gtk::SearchEntry::new();
     search.set_placeholder_text(Some("Search widgets"));
     let list = gtk::ListBox::new();

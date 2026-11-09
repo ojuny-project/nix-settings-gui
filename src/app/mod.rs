@@ -135,7 +135,7 @@ fn build_ui(
     list.add_css_class("navigation-sidebar");
     let list_scroll = gtk::ScrolledWindow::builder()
         .child(&list)
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
 
@@ -172,6 +172,8 @@ fn build_ui(
     sidebar.append(&inputs_list);
 
     let stack = gtk::Stack::new();
+    stack.set_hhomogeneous(false);
+    stack.set_vhomogeneous(false);
     stack.set_hexpand(true);
     stack.set_vexpand(true);
     let inputs_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
