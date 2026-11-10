@@ -197,6 +197,9 @@ pub struct SecureBootState {
     pub esp_free_bytes: Option<u64>,
     pub key_bundle: String,
     pub keys_present: bool,
+    /// Whether the current local bundle was enrolled by this GUI. `None` means
+    /// the marker is missing or does not match the current bundle.
+    pub keys_enrolled: Option<bool>,
     pub lanzaboote_active: bool,
     pub signed_files: usize,
     pub unsigned_files: usize,
@@ -355,6 +358,11 @@ pub fn collect_state() -> SecureBootState {
 
     let keys = Path::new(DEFAULT_PKI_BUNDLE).join("keys");
     state.keys_present = keys.is_dir() || state.owner_guid.is_some();
+    state.keys_enrolled = match (read_enrollment_marker(), local_guid()) {
+        (Some(marker), Some(guid)) if marker == guid => Some(true),
+        (Some(_), Some(_)) => Some(false),
+        _ => None,
+    };
 
     if state.sbctl_installed {
         if let Ok(text) = run("sbctl", &["verify"]) {
@@ -366,6 +374,36 @@ pub fn collect_state() -> SecureBootState {
 
     state.bitlocker_present = bitlocker_present();
     state
+}
+
+fn local_guid() -> Option<String> {
+    std::fs::read_to_string(Path::new(DEFAULT_PKI_BUNDLE).join("GUID"))
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+fn enrollment_marker_path() -> PathBuf {
+    crate::config::AppConfig::path().with_file_name("secureboot-enrolled")
+}
+
+/// The GUID recorded after a successful enrollment, so the flow can tell a
+/// cleared firmware from one that still has this bundle enrolled.
+pub fn read_enrollment_marker() -> Option<String> {
+    std::fs::read_to_string(enrollment_marker_path())
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+pub fn write_enrollment_marker() -> Result<(), String> {
+    let guid = local_guid().ok_or_else(|| "no local Secure Boot GUID".to_string())?;
+    let path = enrollment_marker_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
+    }
+    std::fs::write(&path, guid).map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
 pub const DEFAULT_PKI_BUNDLE: &str = "/var/lib/sbctl";
@@ -448,8 +486,9 @@ pub enum SetupStage {
     Keys,
     Config,
     Rebuild,
-    FirmwareSetup,
+    ClearKeys,
     Enroll,
+    EnableSecureBoot,
     Verify,
     Done,
 }
@@ -461,8 +500,9 @@ impl SetupStage {
             Self::Keys => "Prepare keys",
             Self::Config => "Write configuration",
             Self::Rebuild => "Rebuild NixOS",
-            Self::FirmwareSetup => "Enter firmware setup mode",
+            Self::ClearKeys => "Clear Secure Boot keys in firmware",
             Self::Enroll => "Enroll keys",
+            Self::EnableSecureBoot => "Enable Secure Boot in firmware",
             Self::Verify => "Verify boot files",
             Self::Done => "Secure Boot is active",
         }
@@ -476,10 +516,15 @@ impl SetupStage {
             Self::Rebuild => {
                 "Apply the configuration so Lanzaboote installs signed boot files, then reboot to activate the new generation."
             }
-            Self::FirmwareSetup => {
-                "Reboot into firmware settings, enable Secure Boot, and reset to setup mode."
+            Self::ClearKeys => {
+                "The firmware is in user mode with existing keys. Reboot into firmware, reset to Setup Mode, then return here. Do not enroll until Setup Mode is enabled."
             }
-            Self::Enroll => "Enroll your keys, including the Microsoft vendor keys for Windows.",
+            Self::Enroll => {
+                "Setup Mode is enabled. Enroll your keys, including the Microsoft vendor keys for Windows."
+            }
+            Self::EnableSecureBoot => {
+                "Keys are enrolled. Reboot into firmware and enable Secure Boot. Do not reset to Setup Mode; that clears the keys."
+            }
             Self::Verify => "Reboot, then check that every boot file is signed and enforced.",
             Self::Done => "The firmware enforces Secure Boot and Lanzaboote signed the boot files.",
         }
@@ -499,6 +544,9 @@ pub fn stage(state: &SecureBootState, configured: bool) -> SetupStage {
     if !state.lanzaboote_active {
         return SetupStage::Rebuild;
     }
+    if state.in_setup_mode() {
+        return SetupStage::Enroll;
+    }
     if state.secure_boot_enabled() {
         return if state.unsigned_files > 0 {
             SetupStage::Verify
@@ -506,10 +554,10 @@ pub fn stage(state: &SecureBootState, configured: bool) -> SetupStage {
             SetupStage::Done
         };
     }
-    if state.in_setup_mode() {
-        return SetupStage::Enroll;
+    if state.keys_enrolled == Some(true) {
+        return SetupStage::EnableSecureBoot;
     }
-    SetupStage::FirmwareSetup
+    SetupStage::ClearKeys
 }
 
 /// The privileged commands for the current options and stage.
@@ -649,15 +697,19 @@ mod tests {
         );
         assert_eq!(
             stage(&state(true, true, FirmwareMode::Disabled), true),
-            SetupStage::FirmwareSetup
+            SetupStage::ClearKeys
         );
         let mut setup = state(true, true, FirmwareMode::Setup);
         setup.setup_mode_enabled = Some(true);
         assert_eq!(stage(&setup, true), SetupStage::Enroll);
-        assert_eq!(
-            stage(&state(true, true, FirmwareMode::User), true),
-            SetupStage::Done
-        );
+
+        let mut enrolled = state(true, true, FirmwareMode::Disabled);
+        enrolled.keys_enrolled = Some(true);
+        assert_eq!(stage(&enrolled, true), SetupStage::EnableSecureBoot);
+
+        let mut active = enrolled.clone();
+        active.firmware_mode = FirmwareMode::User;
+        assert_eq!(stage(&active, true), SetupStage::Done);
     }
 
     #[test]

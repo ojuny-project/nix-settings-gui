@@ -18,6 +18,7 @@ pub(crate) struct StatusView {
     secure_boot: adw::ActionRow,
     setup: adw::ActionRow,
     keys: adw::ActionRow,
+    enrollment: adw::ActionRow,
     vendor: adw::ActionRow,
     loader: adw::ActionRow,
     esp: adw::ActionRow,
@@ -50,7 +51,8 @@ impl StatusView {
         let esp = row("EFI system partition");
         let windows = row("Windows");
         let bitlocker = row("BitLocker");
-        let errors = row("Problems");
+        let error = row("Problems");
+        let enrollment = row("Enrollment");
         windows.set_visible(false);
         bitlocker.set_visible(false);
         errors.set_visible(false);
@@ -60,6 +62,7 @@ impl StatusView {
             &secure_boot,
             &setup,
             &keys,
+            &enrollment,
             &vendor,
             &loader,
             &esp,
@@ -76,6 +79,7 @@ impl StatusView {
             secure_boot,
             setup,
             keys,
+            enrollment,
             vendor,
             loader,
             esp,
@@ -99,6 +103,7 @@ impl StatusView {
                 self.secure_boot.set_visible(false);
                 self.setup.set_visible(false);
                 self.keys.set_visible(false);
+                self.enrollment.set_visible(false);
                 self.vendor.set_visible(false);
                 self.loader.set_visible(false);
                 self.esp.set_visible(false);
@@ -123,6 +128,12 @@ impl StatusView {
                 self.setup.set_subtitle(bool_label(state.in_setup_mode()));
                 self.keys.set_visible(true);
                 self.keys.set_subtitle(&key_label(state));
+                self.enrollment.set_visible(true);
+                self.enrollment.set_subtitle(match state.keys_enrolled {
+                    Some(true) => "enrolled from this bundle",
+                    Some(false) => "not enrolled from this bundle",
+                    None => "unknown; repair or enroll to record it",
+                });
                 self.vendor.set_visible(true);
                 self.vendor.set_subtitle(&if state.vendor_keys.is_empty() {
                     "none".to_string()
@@ -291,8 +302,12 @@ pub(crate) fn build_secureboot(record: &Record, ctx: &BuildContext) -> Editor {
     let setup = gtk::Button::with_label("Set up Secure Boot");
     setup.add_css_class("suggested-action");
     setup.set_sensitive(correct_path);
+    let repair = gtk::Button::with_label("Repair Secure Boot keys");
+    repair.add_css_class("flat");
+    repair.set_sensitive(false);
     actions.append(&refresh);
     actions.append(&setup);
+    actions.append(&repair);
     root.append(&actions);
 
     let last_state: Rc<std::cell::RefCell<Option<Result<SecureBootState, String>>>> =
@@ -304,10 +319,12 @@ pub(crate) fn build_secureboot(record: &Record, ctx: &BuildContext) -> Editor {
         let toggle = toggle.clone();
         let last_state = last_state.clone();
         let keys_present = keys_present.clone();
+        let repair = repair.clone();
         Rc::new(move |result| {
             *last_state.borrow_mut() = Some(result.clone());
             let active = toggle.is_active();
             keys_present.set(result.as_ref().ok().map(|state| state.keys_present));
+            repair.set_sensitive(correct_path && result.is_ok());
             if let Ok(state) = &result {
                 fill_warnings(&warnings, state, active);
             }
@@ -377,6 +394,35 @@ pub(crate) fn build_secureboot(record: &Record, ctx: &BuildContext) -> Editor {
         });
     }
 
+    {
+        let ctx = ctx.clone();
+        let update = update.clone();
+        let last_state = last_state.clone();
+        repair.connect_clicked(move |button| {
+            let parent = button.root().and_downcast::<gtk::Window>();
+            let on_done: Rc<dyn Fn()> = {
+                let hook = ctx.secureboot_status.clone();
+                let update = update.clone();
+                Rc::new(move || {
+                    if let Some(hook) = &hook {
+                        hook(
+                            true,
+                            Box::new({
+                                let update = update.clone();
+                                move |result| update(result)
+                            }),
+                        );
+                    }
+                })
+            };
+            let state = last_state.borrow().clone();
+            let Some(Ok(state)) = state else {
+                return;
+            };
+            super::secureboot_wizard::open_repair(parent.as_ref(), state, &ctx, on_done);
+        });
+    }
+
     Editor::SecureBoot {
         root,
         toggle,
@@ -392,6 +438,21 @@ fn fill_warnings(warnings: &gtk::Box, state: &SecureBootState, configured: bool)
     if configured && !state.keys_present {
         messages.push(
             "No Secure Boot key bundle exists. Open Set up Secure Boot and create keys before saving or rebuilding.",
+        );
+    }
+    if configured
+        && state.keys_present
+        && state.keys_enrolled != Some(true)
+        && !state.in_setup_mode()
+        && !state.secure_boot_enabled()
+    {
+        messages.push(
+            "The firmware does not have this key bundle enrolled. Use Repair Secure Boot keys to clear the old keys and re-enroll.",
+        );
+    }
+    if configured && state.in_setup_mode() {
+        messages.push(
+            "The firmware is in Setup Mode. Enroll the current keys, then enable Secure Boot.",
         );
     }
     if configured && state.secure_boot_enabled() && !state.lanzaboote_active {

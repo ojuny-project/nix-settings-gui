@@ -119,6 +119,7 @@ pub(super) fn build_context(app: &Rc<App>) -> widgets::BuildContext {
     ctx.secureboot_status = Some(super::secureboot::status_hook(app));
     ctx.secureboot_write = Some(super::secureboot::write_hook(app));
     ctx.secureboot_run = Some(super::secureboot::run_hook(app));
+    ctx.secureboot_exec = Some(super::secureboot::exec_hook());
     ctx.secureboot_rebuild = Some(super::secureboot::rebuild_hook(app));
     ctx.base = app.base.borrow().clone();
     ctx.wallpaper = Some(super::wallpaper::actions(app));

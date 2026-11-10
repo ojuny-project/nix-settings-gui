@@ -69,6 +69,10 @@ pub type SecureBootWrite =
 /// Runs privileged setup commands in the configured terminal.
 pub type SecureBootRun = Rc<dyn Fn(&[String]) -> Result<(), String>>;
 
+/// Runs privileged setup commands through pkexec and returns their output.
+pub type SecureBootExec =
+    Rc<dyn Fn(Vec<String>, Box<dyn FnOnce(Result<String, String>)>)>;
+
 /// Saves the configuration and starts the configured rebuild.
 pub type SecureBootRebuild = Rc<dyn Fn()>;
 
@@ -141,6 +145,8 @@ pub struct BuildContext {
     pub secureboot_write: Option<SecureBootWrite>,
     /// Runs privileged Secure Boot commands.
     pub secureboot_run: Option<SecureBootRun>,
+    /// Runs privileged Secure Boot commands and captures the result.
+    pub secureboot_exec: Option<SecureBootExec>,
     /// Starts the configured rebuild.
     pub secureboot_rebuild: Option<SecureBootRebuild>,
     /// The flake root, used by widgets that resolve repository paths.

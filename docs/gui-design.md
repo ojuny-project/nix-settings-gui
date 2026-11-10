@@ -221,20 +221,32 @@ With
 `home.stateVersion` and an extra home-manager options field, and the sibling
 `home-manager.users` block follows account renames, additions, and removals.
 
-The `secureboot` control shows a status card, an enable switch, and a "Set up
-Secure Boot" action. The card reads `bootctl status`, `sbctl status`, and
-`sbctl verify` on a worker thread and caches the result until Refresh or the
-next setup action. Rows cover firmware mode, Secure Boot, setup mode, the key
-bundle, vendor keys, the boot loader, ESP free space, Windows, and BitLocker.
-Warnings appear when Windows is present without Microsoft keys, when BitLocker
-is detected, or when the configured state and the live state disagree.
+The `secureboot` control shows a status card, an enable switch, a "Set up
+Secure Boot" action, and a "Repair Secure Boot keys" action. The card reads
+`bootctl status`, `sbctl status`, and `sbctl verify` on a worker thread and
+caches the result until Refresh or the next setup action. Rows cover firmware
+mode, Secure Boot, setup mode, the key bundle, enrollment, vendor keys, the boot
+loader, ESP free space, Windows, and BitLocker. Warnings appear when Windows is
+present without Microsoft keys, when BitLocker is detected, or when the
+configured state and the live state disagree.
 
 The setup dialog is stage-driven rather than a fixed sequence. It derives the
-next step from live state: keys, configuration, rebuild, firmware setup,
-enrollment, verification, and done. A reboot or a firmware change therefore
-resumes at the right step instead of restarting the flow. The keys stage keeps
-an existing `/var/lib/sbctl` bundle, offers migration from `/etc/secureboot`,
-and refuses to generate keys while a bundle exists.
+next step from live state: keys, configuration, rebuild, clearing the firmware
+keys, enrollment, enabling Secure Boot, verification, and done. Enrollment is
+never offered unless the firmware reports Setup Mode. If the firmware is in
+user mode with a different key bundle, the only action is a Reboot into
+firmware step with instructions for resetting to Setup Mode. After enrollment,
+the flow records the enrolled bundle and changes to a Reboot into firmware step
+for enabling Secure Boot, so it never tells the user to reset the keys it just
+enrolled. The keys stage keeps an existing `/var/lib/sbctl` bundle, offers
+migration from `/etc/secureboot`, and refuses to generate keys while a bundle
+exists.
+
+The Repair Secure Boot keys action follows the same rule. In Setup Mode it
+re-enrolls the current bundle. Otherwise it shows the firmware reset
+instructions and a Reboot to firmware button. Key creation and enrollment run
+through `pkexec` with captured output, so a non-zero `sbctl enroll-keys` stops
+the flow. The rebuild still uses the configured terminal command.
 
 Writing the configuration is a direct edit, like Add file or Flake Inputs, not a
 staged control edit. It adds the Lanzaboote input to `flake.nix`, merges into an

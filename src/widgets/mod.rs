@@ -59,8 +59,8 @@ pub use context::BuildContext;
 pub use dispatch::build;
 pub(crate) use context::{
     ApplyHook, ChangeHook, FileActions, IconActions, PackageSearch,
-    PasswordPromptHook, PluginRegistryHook, PluginSettingsHook, SecureBootRebuild, SecureBootRun,
-    SecureBootStatus, SecureBootWrite, WallpaperActions, WallpaperSetHook,
+    PasswordPromptHook, PluginRegistryHook, PluginSettingsHook, SecureBootExec, SecureBootRebuild,
+    SecureBootRun, SecureBootStatus, SecureBootWrite, WallpaperActions, WallpaperSetHook,
 };
 pub(crate) use details::InfoDetails;
 pub use editor::Editor;

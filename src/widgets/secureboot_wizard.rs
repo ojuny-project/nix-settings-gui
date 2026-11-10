@@ -10,12 +10,13 @@ use super::secureboot::{badge, StatusView};
 use crate::model::Record;
 use crate::secureboot::{self, KeyAction, SecureBootState, SetupOptions, SetupStage};
 
-const STAGES: [SetupStage; 7] = [
+const STAGES: [SetupStage; 8] = [
     SetupStage::Keys,
     SetupStage::Config,
     SetupStage::Rebuild,
-    SetupStage::FirmwareSetup,
+    SetupStage::ClearKeys,
     SetupStage::Enroll,
+    SetupStage::EnableSecureBoot,
     SetupStage::Verify,
     SetupStage::Done,
 ];
@@ -211,7 +212,7 @@ pub(crate) fn open(
                 SetupStage::Keys => options.key_action.label(),
                 SetupStage::Config => "Write configuration",
                 SetupStage::Rebuild => "Rebuild now",
-                SetupStage::FirmwareSetup => "Reboot to firmware",
+                SetupStage::ClearKeys | SetupStage::EnableSecureBoot => "Reboot to firmware",
                 SetupStage::Enroll => "Enroll keys",
                 SetupStage::Verify => "Rebuild and re-check",
                 SetupStage::Done => "Close",
@@ -337,7 +338,19 @@ pub(crate) fn open(
             match secureboot::stage(&current, configured.get()) {
                 SetupStage::Keys => {
                     let commands = secureboot::setup_commands(&options, &current);
-                    run_commands(&ctx, &commands, &log, &on_done);
+                    let log = log.clone();
+                    let refresh = refresh.clone();
+                    let on_done = on_done.clone();
+                    run_captured(&ctx, &commands, &log, move |result| match result {
+                        Ok(text) => {
+                            if !text.trim().is_empty() {
+                                log.set_text(text.trim());
+                            }
+                            refresh();
+                            on_done();
+                        }
+                        Err(error) => log.set_text(&error),
+                    });
                 }
                 SetupStage::Config => write(),
                 SetupStage::Rebuild => {
@@ -351,13 +364,41 @@ pub(crate) fn open(
                         log.set_text("No rebuild command is configured");
                     }
                 }
-                SetupStage::FirmwareSetup => {
-                    let commands = vec!["systemctl reboot --firmware-setup".to_string()];
-                    run_commands(&ctx, &commands, &log, &on_done);
+                SetupStage::ClearKeys | SetupStage::EnableSecureBoot => {
+                    let stage = secureboot::stage(&current, configured.get());
+                    let log = log.clone();
+                    let on_done = on_done.clone();
+                    open_firmware_instructions(&dialog, &ctx, stage, &log, &on_done);
                 }
                 SetupStage::Enroll => {
+                    if !current.in_setup_mode() {
+                        log.set_text(
+                            "The firmware is not in Setup Mode. Reboot into firmware and reset it before enrolling.",
+                        );
+                        return;
+                    }
                     let commands = secureboot::setup_commands(&options, &current);
-                    run_commands(&ctx, &commands, &log, &on_done);
+                    let log = log.clone();
+                    let refresh = refresh.clone();
+                    let on_done = on_done.clone();
+                    run_captured(&ctx, &commands, &log, move |result| match result {
+                        Ok(text) => {
+                            let mut message = if text.trim().is_empty() {
+                                "Keys enrolled.".to_string()
+                            } else {
+                                text.trim().to_string()
+                            };
+                            if let Err(error) = secureboot::write_enrollment_marker() {
+                                message.push_str(&format!(
+                                    "\nCannot record enrollment: {error}"
+                                ));
+                            }
+                            log.set_text(&message);
+                            refresh();
+                            on_done();
+                        }
+                        Err(error) => log.set_text(&error),
+                    });
                 }
                 SetupStage::Verify => {
                     if let Some(rebuild) = &ctx.secureboot_rebuild {
@@ -408,6 +449,218 @@ fn confirm_reboot(
         if response == "reboot" {
             let commands = vec!["systemctl reboot".to_string()];
             run_commands(&ctx, &commands, &log, &on_done);
+        }
+        dialog.close();
+    });
+    dialog.present();
+}
+
+pub(crate) fn open_repair(
+    parent: Option<&gtk::Window>,
+    state: SecureBootState,
+    ctx: &BuildContext,
+    on_done: Rc<dyn Fn()>,
+) {
+    if !state.efi {
+        show_message(
+            parent,
+            "UEFI required",
+            "Secure Boot repair needs a UEFI boot.",
+        );
+        return;
+    }
+    if !state.keys_present {
+        show_message(
+            parent,
+            "No key bundle",
+            "There is no key bundle in /var/lib/sbctl. Run Set up Secure Boot first.",
+        );
+        return;
+    }
+    if state.secure_boot_enabled() {
+        show_message(
+            parent,
+            "Secure Boot is already active",
+            "Disable Secure Boot in firmware before repairing the keys.",
+        );
+        return;
+    }
+
+    let parent_owned = parent.map(|window| window.clone());
+    if state.in_setup_mode() {
+        let dialog = adw::MessageDialog::builder()
+            .modal(true)
+            .heading("Re-enroll Secure Boot keys")
+            .body(
+                "The firmware is in Setup Mode. Re-enroll the current /var/lib/sbctl bundle, \
+                 including the Microsoft certificates for Windows. Confirm the BitLocker recovery \
+                 key in Windows first.",
+            )
+            .build();
+        if let Some(parent) = parent {
+            dialog.set_transient_for(Some(parent));
+        }
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("repair", "Re-enroll keys");
+        dialog.set_response_appearance("repair", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let ctx = ctx.clone();
+        let on_done = on_done.clone();
+        let parent = parent_owned.clone();
+        dialog.connect_response(None, move |dialog, response| {
+            if response == "repair" {
+                let commands = vec!["sbctl enroll-keys --microsoft".to_string()];
+                let log = gtk::Label::new(None);
+                let on_done = on_done.clone();
+                let parent = parent.clone();
+                run_captured(&ctx, &commands, &log, move |result| match result {
+                    Ok(_) => {
+                        if let Err(error) = secureboot::write_enrollment_marker() {
+                            show_message(
+                                parent.as_ref(),
+                                "Keys enrolled, enrollment marker failed",
+                                &error,
+                            );
+                        } else {
+                            show_message(
+                                parent.as_ref(),
+                                "Secure Boot keys re-enrolled",
+                                "Reboot, enable Secure Boot in firmware, and select the Linux \
+                                 Boot Manager. Do not reset to Setup Mode.",
+                            );
+                        }
+                        on_done();
+                    }
+                    Err(error) => {
+                        show_message(parent.as_ref(), "Re-enrollment failed", &error);
+                    }
+                });
+            }
+            dialog.close();
+        });
+        dialog.present();
+        return;
+    }
+
+    let dialog = adw::MessageDialog::builder()
+        .modal(true)
+        .heading("Firmware is not in Setup Mode")
+        .body(
+            "The firmware still holds a different key bundle. Enter firmware settings, open \
+             Security > Secure Boot > Key Management, and select Reset to Setup Mode or delete \
+             the Platform Key. Do not select Clear All Secure Boot Keys if a reset option exists; \
+             it can drop the Forbidden Signature Database. Save and exit, boot back into NixOS, \
+             then run Repair Secure Boot keys again.",
+        )
+        .build();
+    if let Some(parent) = parent {
+        dialog.set_transient_for(Some(parent));
+    }
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("reboot", "Reboot to firmware");
+    dialog.set_response_appearance("reboot", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("cancel"));
+    dialog.set_close_response("cancel");
+    let ctx = ctx.clone();
+    let parent = parent_owned;
+    dialog.connect_response(None, move |dialog, response| {
+        if response == "reboot" {
+            let commands = vec!["systemctl reboot --firmware-setup".to_string()];
+            let log = gtk::Label::new(None);
+            let parent = parent.clone();
+            run_captured(&ctx, &commands, &log, move |result| {
+                if let Err(error) = result {
+                    show_message(parent.as_ref(), "Cannot reboot to firmware", &error);
+                }
+            });
+        }
+        dialog.close();
+    });
+    dialog.present();
+}
+
+fn show_message(parent: Option<&gtk::Window>, heading: &str, body: &str) {
+    let dialog = adw::MessageDialog::builder()
+        .modal(true)
+        .heading(heading)
+        .body(body)
+        .build();
+    if let Some(parent) = parent {
+        dialog.set_transient_for(Some(parent));
+    }
+    dialog.add_response("close", "Close");
+    dialog.set_close_response("close");
+    dialog.connect_response(None, |dialog, _| dialog.close());
+    dialog.present();
+}
+
+fn run_captured(
+    ctx: &BuildContext,
+    commands: &[String],
+    log: &gtk::Label,
+    done: impl FnOnce(Result<String, String>) + 'static,
+) {
+    if commands.is_empty() {
+        log.set_text("There is no privileged action left for this step");
+        return;
+    }
+    let Some(exec) = ctx.secureboot_exec.clone() else {
+        log.set_text("Cannot run privileged commands");
+        return;
+    };
+    exec(commands.to_vec(), Box::new(done));
+}
+
+fn open_firmware_instructions(
+    parent: &gtk::Dialog,
+    ctx: &BuildContext,
+    stage: SetupStage,
+    log: &gtk::Label,
+    on_done: &Rc<dyn Fn()>,
+) {
+    let (heading, body) = match stage {
+        SetupStage::ClearKeys => (
+            "Clear Secure Boot keys in firmware",
+            "The firmware still holds a different key bundle. Enter firmware settings, open \
+             Security > Secure Boot > Key Management, and select Reset to Setup Mode or delete \
+             the Platform Key. Do not select Clear All Secure Boot Keys if a reset option exists; \
+             it can drop the Forbidden Signature Database. Save and exit, then boot back into \
+             NixOS.",
+        ),
+        SetupStage::EnableSecureBoot => (
+            "Enable Secure Boot in firmware",
+            "The keys are enrolled. Enter firmware settings, open Security > Secure Boot, and \
+             enable Secure Boot. Do not reset to Setup Mode; that clears the enrolled keys. Save \
+             and exit.",
+        ),
+        _ => return,
+    };
+    let dialog = adw::MessageDialog::builder()
+        .transient_for(parent)
+        .modal(true)
+        .heading(heading)
+        .body(body)
+        .build();
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("reboot", "Reboot to firmware");
+    dialog.set_response_appearance("reboot", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("cancel"));
+    dialog.set_close_response("cancel");
+    let ctx = ctx.clone();
+    let log = log.clone();
+    let on_done = on_done.clone();
+    dialog.connect_response(None, move |dialog, response| {
+        if response == "reboot" {
+            let commands = vec!["systemctl reboot --firmware-setup".to_string()];
+            let log = log.clone();
+            let on_done = on_done.clone();
+            run_captured(&ctx, &commands, &log, move |result| {
+                if let Err(error) = result {
+                    log.set_text(&error);
+                }
+                on_done();
+            });
         }
         dialog.close();
     });

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::Command;
 use std::rc::Rc;
 
+use gtk::glib;
 use rowan::ast::AstNode;
 
 use crate::edit::{self, PendingEdit};
@@ -49,6 +50,59 @@ pub(super) fn write_hook(app: &Rc<App>) -> widgets::SecureBootWrite {
 pub(super) fn run_hook(app: &Rc<App>) -> widgets::SecureBootRun {
     let app = app.clone();
     Rc::new(move |commands| run_privileged(&app, commands))
+}
+
+pub(super) fn exec_hook() -> widgets::SecureBootExec {
+    Rc::new(move |commands, done| {
+        if commands.is_empty() {
+            done(Ok(String::new()));
+            return;
+        }
+        let path = std::env::var("PATH").unwrap_or_default();
+        let script = format!(
+            "PATH='{path}:/run/current-system/sw/bin':$PATH; {}",
+            commands.join(" && ")
+        );
+        let (tx, rx) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let result = run_pkexec(&script);
+            let _ = tx.send_blocking(result);
+        });
+        glib::MainContext::default().spawn_local(async move {
+            if let Ok(result) = rx.recv().await {
+                done(result);
+            }
+        });
+    })
+}
+
+fn run_pkexec(script: &str) -> Result<String, String> {
+    let program = if Path::new("/run/wrappers/bin/pkexec").is_file() {
+        "/run/wrappers/bin/pkexec"
+    } else {
+        "pkexec"
+    };
+    let output = Command::new(program)
+        .arg("sh")
+        .arg("-c")
+        .arg(script)
+        .output()
+        .map_err(|error| format!("cannot run pkexec: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        return Ok(if stdout.is_empty() { stderr } else { stdout });
+    }
+    let text = [stderr, stdout]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(if text.is_empty() {
+        format!("pkexec command failed with {}", output.status)
+    } else {
+        text
+    })
 }
 
 pub(super) fn rebuild_hook(app: &Rc<App>) -> widgets::SecureBootRebuild {

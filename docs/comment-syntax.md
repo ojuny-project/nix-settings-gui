@@ -465,16 +465,26 @@ systemd-boot settings from the hardware module; enabling it forces both
 bootloaders off.
 
 The steps are derived from live state, so the dialog can be reopened after a
-reboot: keys, configuration, rebuild, firmware setup mode, enrollment, and
-verification. Key generation is refused while `/var/lib/sbctl/keys` exists.
-Enrollment defaults to `--microsoft` so Windows and option ROM signatures keep
-working, and the card warns about BitLocker and Windows detection. Privileged
-commands run through the configured terminal command, so the app never handles
-the sudo password.
+reboot: keys, configuration, rebuild, firmware key reset, enrollment, Secure
+Boot enablement, and verification. The flow refuses to offer enrollment unless
+`sbctl status` reports `Setup Mode: Enabled`. When the firmware holds a
+different key bundle, the first step is a Reboot into firmware action with
+instructions for clearing the old keys; enrollment is not available from that
+step.
 
-Firmware Secure Boot is read-only from the operating system. When the flow
-reaches `FirmwareSetup` it offers to reboot into the firmware settings; the user
-still has to enable Secure Boot and reset to setup mode there.
+Enrollment defaults to `--microsoft` so Windows and option ROM signatures keep
+working. The card warns about BitLocker and Windows detection. Key creation and
+enrollment run through `pkexec` with captured output, so a failed
+`sbctl enroll-keys` stops the flow instead of looking successful. The rebuild
+still runs through the configured terminal command.
+
+The card also has a `Repair Secure Boot keys` action. If the firmware is in
+Setup Mode it re-runs enrollment for the current `/var/lib/sbctl` bundle. If it
+is not, it shows the firmware instructions and a Reboot to firmware button.
+
+Firmware Secure Boot is read-only from the operating system. The flow offers a
+Reboot into firmware action for clearing keys and for enabling Secure Boot; the
+user still performs those steps in firmware.
 
 The `menu` provider `apps` is only valid on a top-level entry. A top-level
 entry with `provider = "apps"` cannot receive child options because the

@@ -206,6 +206,7 @@ the attached record's sibling assignments, edits existing `imports`,
 `environment.systemPackages`, `boot.loader.*`, and `boot.lanzaboote.*` in
 place, inserts the remaining block after the attached option, adds the
 Lanzaboote flake input through `flake_inputs`, and applies the batch with
-`edit::apply`. Privileged commands go to `save::spawn_in_terminal`, so sudo
-prompts in the user's terminal, or to `pkexec` when no terminal is configured.
+`edit::apply`. Key creation, enrollment, and firmware verification run through
+`pkexec` and are captured, so a failed `sbctl enroll-keys` stops the flow.
+Rebuild and reboot actions still use `save::spawn_in_terminal`.
 
