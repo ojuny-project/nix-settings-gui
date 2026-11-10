@@ -260,6 +260,7 @@ pub(crate) fn build(
         .build();
     let left = gtk::Box::new(gtk::Orientation::Vertical, 8);
     left.set_size_request(1, 1);
+    left.set_hexpand(true);
     left.append(&scrolled);
 
     let preview_host = gtk::Box::new(gtk::Orientation::Vertical, 0);

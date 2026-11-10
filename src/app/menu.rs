@@ -203,8 +203,6 @@ fn select_file(app: &Rc<App>, file: &str) {
 fn rebuild_pages(app: &Rc<App>) {
     let started = crate::timing::start();
     let old_pages = app.pages.take();
-    for page in &old_pages {
-    }
     drop(old_pages);
 
     let menus = sorted_menus(app);
@@ -215,6 +213,7 @@ fn rebuild_pages(app: &Rc<App>) {
             let page = build_page(app, menu);
             pages.push(page);
         }
+        app.pages.replace(pages);
         if !app.showing_inputs.get() {
             app.inputs_list.unselect_all();
             app.show_page(&file);
@@ -222,7 +221,6 @@ fn rebuild_pages(app: &Rc<App>) {
         *app.current_file.borrow_mut() = file.clone();
         select_file(app, &file);
     }
-    app.pages.replace(pages);
 
     super::controls::apply_control_filter(app);
     crate::timing::report("rebuild_pages", started);
