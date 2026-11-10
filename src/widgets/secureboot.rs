@@ -51,7 +51,7 @@ impl StatusView {
         let esp = row("EFI system partition");
         let windows = row("Windows");
         let bitlocker = row("BitLocker");
-        let error = row("Problems");
+        let errors = row("Problems");
         let enrollment = row("Enrollment");
         windows.set_visible(false);
         bitlocker.set_visible(false);

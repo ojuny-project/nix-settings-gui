@@ -339,17 +339,18 @@ pub(crate) fn open(
                 SetupStage::Keys => {
                     let commands = secureboot::setup_commands(&options, &current);
                     let log = log.clone();
+                    let callback_log = log.clone();
                     let refresh = refresh.clone();
                     let on_done = on_done.clone();
                     run_captured(&ctx, &commands, &log, move |result| match result {
                         Ok(text) => {
                             if !text.trim().is_empty() {
-                                log.set_text(text.trim());
+                                callback_log.set_text(text.trim());
                             }
                             refresh();
                             on_done();
                         }
-                        Err(error) => log.set_text(&error),
+                        Err(error) => callback_log.set_text(&error),
                     });
                 }
                 SetupStage::Config => write(),
@@ -379,6 +380,7 @@ pub(crate) fn open(
                     }
                     let commands = secureboot::setup_commands(&options, &current);
                     let log = log.clone();
+                    let callback_log = log.clone();
                     let refresh = refresh.clone();
                     let on_done = on_done.clone();
                     run_captured(&ctx, &commands, &log, move |result| match result {
@@ -393,11 +395,11 @@ pub(crate) fn open(
                                     "\nCannot record enrollment: {error}"
                                 ));
                             }
-                            log.set_text(&message);
+                            callback_log.set_text(&message);
                             refresh();
                             on_done();
                         }
-                        Err(error) => log.set_text(&error),
+                        Err(error) => callback_log.set_text(&error),
                     });
                 }
                 SetupStage::Verify => {
@@ -654,10 +656,11 @@ fn open_firmware_instructions(
         if response == "reboot" {
             let commands = vec!["systemctl reboot --firmware-setup".to_string()];
             let log = log.clone();
+            let callback_log = log.clone();
             let on_done = on_done.clone();
             run_captured(&ctx, &commands, &log, move |result| {
                 if let Err(error) = result {
-                    log.set_text(&error);
+                    callback_log.set_text(&error);
                 }
                 on_done();
             });

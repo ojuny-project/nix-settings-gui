@@ -384,7 +384,16 @@ fn local_guid() -> Option<String> {
 }
 
 fn enrollment_marker_path() -> PathBuf {
-    crate::config::AppConfig::path().with_file_name("secureboot-enrolled")
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            home.join(".config")
+        });
+    base.join("nix-settings-gui")
+        .join("secureboot-enrolled")
 }
 
 /// The GUID recorded after a successful enrollment, so the flow can tell a
