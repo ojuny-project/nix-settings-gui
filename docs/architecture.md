@@ -206,7 +206,7 @@ the attached record's sibling assignments, edits existing `imports`,
 `environment.systemPackages`, `boot.loader.*`, and `boot.lanzaboote.*` in
 place, inserts the remaining block after the attached option, adds the
 Lanzaboote flake input through `flake_inputs`, and applies the batch with
-`edit::apply`. Key creation, enrollment, and firmware verification run through
-`pkexec` and are captured, so a failed `sbctl enroll-keys` stops the flow.
-Rebuild and reboot actions still use `save::spawn_in_terminal`.
+`edit::apply`. Key creation and enrollment run in the configured terminal;
+enrollment writes the enrolled-bundle marker only after `sbctl enroll-keys`
+succeeds. Rebuild and reboot actions use the same terminal helper.
 

@@ -474,9 +474,9 @@ step.
 
 Enrollment defaults to `--microsoft` so Windows and option ROM signatures keep
 working. The card warns about BitLocker and Windows detection. Key creation and
-enrollment run through `pkexec` with captured output, so a failed
-`sbctl enroll-keys` stops the flow instead of looking successful. The rebuild
-still runs through the configured terminal command.
+enrollment run in the configured terminal; enrollment writes a success marker
+only after `sbctl enroll-keys` succeeds, so a failed command does not advance
+the flow. The rebuild also runs through the configured terminal command.
 
 The card also has a `Repair Secure Boot keys` action. If the firmware is in
 Setup Mode it re-runs enrollment for the current `/var/lib/sbctl` bundle. If it

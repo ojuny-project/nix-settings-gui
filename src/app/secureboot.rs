@@ -131,17 +131,6 @@ fn run_privileged(app: &Rc<App>, commands: &[String]) -> Result<(), String> {
             .join(" && ");
         return save::spawn_in_terminal(app, &script);
     }
-    if has_tool("pkexec") {
-        let script = commands.join(" && ");
-        return Command::new("pkexec")
-            .arg("sh")
-            .arg("-c")
-            .arg(script)
-            .current_dir(app.base.borrow().clone())
-            .spawn()
-            .map(|_| ())
-            .map_err(|error| format!("cannot run pkexec: {error}"));
-    }
     Err("Configure a terminal command so sudo can ask for a password".to_string())
 }
 

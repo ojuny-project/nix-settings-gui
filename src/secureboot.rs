@@ -415,6 +415,18 @@ pub fn write_enrollment_marker() -> Result<(), String> {
     std::fs::write(&path, guid).map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
+/// Shell command that records a successful enrollment. It is appended to the
+/// enrollment command so the marker is written only when `sbctl` succeeds.
+pub fn enrollment_marker_command() -> Result<String, String> {
+    let guid = local_guid().ok_or_else(|| "no local Secure Boot GUID".to_string())?;
+    let path = enrollment_marker_path();
+    Ok(format!(
+        "printf %s {} > {}",
+        crate::apply::shell_quote(&guid),
+        crate::apply::shell_quote(&path.display().to_string())
+    ))
+}
+
 pub const DEFAULT_PKI_BUNDLE: &str = "/var/lib/sbctl";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

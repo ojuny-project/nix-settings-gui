@@ -338,20 +338,7 @@ pub(crate) fn open(
             match secureboot::stage(&current, configured.get()) {
                 SetupStage::Keys => {
                     let commands = secureboot::setup_commands(&options, &current);
-                    let log = log.clone();
-                    let callback_log = log.clone();
-                    let refresh = refresh.clone();
-                    let on_done = on_done.clone();
-                    run_captured(&ctx, &commands, &log, move |result| match result {
-                        Ok(text) => {
-                            if !text.trim().is_empty() {
-                                callback_log.set_text(text.trim());
-                            }
-                            refresh();
-                            on_done();
-                        }
-                        Err(error) => callback_log.set_text(&error),
-                    });
+                    run_commands(&ctx, &commands, &log, &on_done);
                 }
                 SetupStage::Config => write(),
                 SetupStage::Rebuild => {
@@ -378,29 +365,18 @@ pub(crate) fn open(
                         );
                         return;
                     }
-                    let commands = secureboot::setup_commands(&options, &current);
-                    let log = log.clone();
-                    let callback_log = log.clone();
-                    let refresh = refresh.clone();
-                    let on_done = on_done.clone();
-                    run_captured(&ctx, &commands, &log, move |result| match result {
-                        Ok(text) => {
-                            let mut message = if text.trim().is_empty() {
-                                "Keys enrolled.".to_string()
-                            } else {
-                                text.trim().to_string()
-                            };
-                            if let Err(error) = secureboot::write_enrollment_marker() {
-                                message.push_str(&format!(
-                                    "\nCannot record enrollment: {error}"
-                                ));
-                            }
-                            callback_log.set_text(&message);
-                            refresh();
-                            on_done();
+                    let commands = match secureboot::enrollment_marker_command() {
+                        Ok(marker) => {
+                            let enroll =
+                                secureboot::setup_commands(&options, &current).join(" && ");
+                            vec![format!("{enroll} && {marker}")]
                         }
-                        Err(error) => callback_log.set_text(&error),
-                    });
+                        Err(error) => {
+                            log.set_text(&error);
+                            return;
+                        }
+                    };
+                    run_commands(&ctx, &commands, &log, &on_done);
                 }
                 SetupStage::Verify => {
                     if let Some(rebuild) = &ctx.secureboot_rebuild {
@@ -512,32 +488,19 @@ pub(crate) fn open_repair(
         let parent = parent_owned.clone();
         dialog.connect_response(None, move |dialog, response| {
             if response == "repair" {
-                let commands = vec!["sbctl enroll-keys --microsoft".to_string()];
-                let log = gtk::Label::new(None);
-                let on_done = on_done.clone();
-                let parent = parent.clone();
-                run_captured(&ctx, &commands, &log, move |result| match result {
-                    Ok(_) => {
-                        if let Err(error) = secureboot::write_enrollment_marker() {
-                            show_message(
-                                parent.as_ref(),
-                                "Keys enrolled, enrollment marker failed",
-                                &error,
-                            );
-                        } else {
-                            show_message(
-                                parent.as_ref(),
-                                "Secure Boot keys re-enrolled",
-                                "Reboot, enable Secure Boot in firmware, and select the Linux \
-                                 Boot Manager. Do not reset to Setup Mode.",
-                            );
-                        }
-                        on_done();
-                    }
+                let marker = match secureboot::enrollment_marker_command() {
+                    Ok(marker) => marker,
                     Err(error) => {
-                        show_message(parent.as_ref(), "Re-enrollment failed", &error);
+                        show_message(parent.as_ref(), "Cannot record enrollment", &error);
+                        dialog.close();
+                        return;
                     }
-                });
+                };
+                let commands = vec![format!(
+                    "sbctl enroll-keys --microsoft && {marker}"
+                )];
+                let log = gtk::Label::new(None);
+                run_commands(&ctx, &commands, &log, &on_done);
             }
             dialog.close();
         });
@@ -565,17 +528,12 @@ pub(crate) fn open_repair(
     dialog.set_default_response(Some("cancel"));
     dialog.set_close_response("cancel");
     let ctx = ctx.clone();
-    let parent = parent_owned;
+    let on_done = on_done.clone();
     dialog.connect_response(None, move |dialog, response| {
         if response == "reboot" {
             let commands = vec!["systemctl reboot --firmware-setup".to_string()];
             let log = gtk::Label::new(None);
-            let parent = parent.clone();
-            run_captured(&ctx, &commands, &log, move |result| {
-                if let Err(error) = result {
-                    show_message(parent.as_ref(), "Cannot reboot to firmware", &error);
-                }
-            });
+            run_commands(&ctx, &commands, &log, &on_done);
         }
         dialog.close();
     });
@@ -655,15 +613,7 @@ fn open_firmware_instructions(
     dialog.connect_response(None, move |dialog, response| {
         if response == "reboot" {
             let commands = vec!["systemctl reboot --firmware-setup".to_string()];
-            let log = log.clone();
-            let callback_log = log.clone();
-            let on_done = on_done.clone();
-            run_captured(&ctx, &commands, &log, move |result| {
-                if let Err(error) = result {
-                    callback_log.set_text(&error);
-                }
-                on_done();
-            });
+            run_commands(&ctx, &commands, &log, &on_done);
         }
         dialog.close();
     });

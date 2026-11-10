@@ -245,8 +245,8 @@ exists.
 The Repair Secure Boot keys action follows the same rule. In Setup Mode it
 re-enrolls the current bundle. Otherwise it shows the firmware reset
 instructions and a Reboot to firmware button. Key creation and enrollment run
-through `pkexec` with captured output, so a non-zero `sbctl enroll-keys` stops
-the flow. The rebuild still uses the configured terminal command.
+in the configured terminal; enrollment writes the success marker only after
+`sbctl enroll-keys` succeeds. The rebuild also uses the configured terminal.
 
 Writing the configuration is a direct edit, like Add file or Flake Inputs, not a
 staged control edit. It adds the Lanzaboote input to `flake.nix`, merges into an
