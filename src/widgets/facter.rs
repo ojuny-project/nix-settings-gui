@@ -10,7 +10,37 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub(crate) fn report_path(base: &str) -> PathBuf {
-    normalize_path(Path::new(base)).join("modules/07-system/facter.json")
+    let root = normalize_path(Path::new(base));
+    let preferred = root.join("modules").join("facter.json");
+    if preferred.is_file() {
+        return preferred;
+    }
+    let mut found = Vec::new();
+    find_reports(&root, &mut found);
+    found.sort();
+    found.into_iter().next().unwrap_or(preferred)
+}
+
+fn find_reports(dir: &Path, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with('.')
+            || matches!(name.as_ref(), "result" | "target")
+            || name.starts_with("result-")
+        {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            find_reports(&path, found);
+        } else if name == "facter.json" {
+            found.push(path);
+        }
+    }
 }
 
 pub(crate) fn build_facter(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> Editor {
@@ -120,7 +150,20 @@ mod tests {
     fn resolves_the_report_from_the_flake_root() {
         assert_eq!(
             report_path("/repo"),
-            PathBuf::from("/repo/modules/07-system/facter.json")
+            PathBuf::from("/repo/modules/facter.json")
         );
+    }
+
+    #[test]
+    fn finds_an_existing_report_in_a_nested_module_tree() {
+        let root = std::env::temp_dir().join(format!(
+            "nix-settings-gui-facter-{}",
+            std::process::id()
+        ));
+        let nested = root.join("modules/07-system");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("facter.json"), "{}").unwrap();
+        assert_eq!(report_path(root.to_str().unwrap()), nested.join("facter.json"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -54,10 +54,14 @@ impl AppConfig {
     }
 
     pub fn load() -> Self {
-        std::fs::read_to_string(Self::path())
+        let mut config = std::fs::read_to_string(Self::path())
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if config.flake_path.is_none() {
+            config.flake_path = system_flake_path();
+        }
+        config
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -77,6 +81,17 @@ impl AppConfig {
         self.recent_flake_paths.insert(0, flake.to_string());
         self.recent_flake_paths.truncate(10);
     }
+}
+
+/// The Ojuny configuration projects `ojuny.repoPath` to this file. The GUI
+/// still accepts an explicit path, so a user can point it elsewhere.
+fn system_flake_path() -> Option<String> {
+    let text = std::fs::read_to_string("/etc/ojuny/flake-path").ok()?;
+    let path = text.trim();
+    if path.is_empty() || !PathBuf::from(path).join("flake.nix").is_file() {
+        return None;
+    }
+    Some(path.to_string())
 }
 
 fn home() -> PathBuf {

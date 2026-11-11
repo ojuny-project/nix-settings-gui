@@ -120,7 +120,9 @@ After choosing a path, pick a widget and an initial value. The app writes the
 ## 8. Settings
 
 **Configure** edits the config file: the flake path, the terminal command, and
-the rebuild command. The rebuild runs `terminal_command` with
+the rebuild command. When no flake path is configured, the GUI reads
+`/etc/ojuny/flake-path`, the projection of Ojuny's `ojuny.repoPath` option.
+The rebuild runs `terminal_command` with
 `rebuild_command`; a `{cmd}` placeholder is replaced, otherwise the rebuild
 command is appended. Privilege escalation is expressed entirely in those two
 commands.
