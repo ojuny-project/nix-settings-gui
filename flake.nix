@@ -249,5 +249,7 @@
       lib.mkBinary = mkBinary;
       nixosModules.default = import ./modules/nixos.nix self;
       nixosModules.nix-settings-gui = import ./modules/nixos.nix self;
+      homeManagerModules.default = import ./modules/home-manager.nix self;
+      homeManagerModules.nix-settings-gui = import ./modules/home-manager.nix self;
     };
 }

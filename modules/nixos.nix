@@ -7,6 +7,8 @@ self: {
 with lib; let
   cfg = config.services.nix-settings-gui;
 in {
+  imports = [ ./monitors.nix ];
+
   options.services.nix-settings-gui = {
     enable = mkEnableOption "nix-settings-gui, a comment-driven settings GUI for Nix";
 

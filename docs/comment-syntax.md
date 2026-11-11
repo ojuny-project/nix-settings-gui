@@ -85,6 +85,7 @@ services.pipewire.enable = true;
 | `maxColumns`  | integer         | Maximum children per line for `horizontal-submodule` (default 4). |
 | `columns`     | list of strings | Field names (columns) for `table-attrset` and `table-list`. |
 | `columnTypes` | list of strings | Per-column editor hints for tables: `bool`, `int`, `float`, `str`, `icon`, or `dropdown`. |
+| `disabledFeatures` | list of strings | Feature paths the attached widget must hide and omit on save. Entries are relative to the attached option, for example `width`, `hdr`, or `hdr.sdrEotf`. |
 | `keyEditable` | boolean         | Table: whether cell keys are editable (default `false`). |
 | `firstValueEditable` | boolean   | Table: whether the first cell's value is editable (default `false`). |
 | `advanced`    | boolean         | Collapses the control under "Advanced". |
@@ -284,7 +285,7 @@ its own interface, such as a Dux Modular Shell or mango IPC call.
 | `table-attrset` | Editable table over an attribute set of sets | `{ key = { ... }; ... }` |
 | `table-list` | Editable table over a list of sets | `[ { ... } ... ]` |
 | `keybinds` | Bind list with a modifier+keys preview and edit popout | mode -> name -> bind set |
-| `monitors` | Draggable monitor layout canvas over `monitor_rule` | list of monitor sets |
+| `monitors` | Draggable output layout canvas over the generic output contract | attribute set keyed by output name |
 | `theme` | Scheme picker with colour swatches | short scheme name string |
 | `font` | Searchable font chooser with live or baked previews | font family string |
 | `icon-theme` | Searchable icon theme chooser with icon previews | theme directory name string |
@@ -381,7 +382,7 @@ in the application.
 | Widget | Attach to | Shape |
 |--------|-----------|-------|
 | `keybinds` | a bind mode, e.g. `binds.default` | `name -> { modifier; keys; dispatcher; args; description; group; subcat; }`. Shows a `modifier+keys` preview per row and opens a popout to edit the fields. |
-| `monitors` | `mango.rules.monitor_rule` | a list of monitor sets. Renders the configured rules on a draggable canvas; dragging writes `x`/`y` only. Unset sizes default to a 1920x1080 rectangle (marked visually). |
+| `monitors` | `services.nix-settings-gui.monitors` | An attribute set keyed by output name. Each value carries the generic output keys, grouped under `match`, `color`, `hdr`, `sync`, `render`, `signal`, `reserved`, `hotCorners`, and `background`. The key is the identity and cannot be renamed. See `outputs-contract.md`. |
 | `theme` | the scheme option | a scheme name string. Shows a swatch per bundled scheme and writes the short name (`base16-ocean` becomes `ocean`). `polarity` and `wallpaper` stay separate options. |
 | `font` | a font family option, e.g. `stylix.fonts.monospace.name` | An inline search list with previews. The shipped catalog contains Nixpkgs font families, including Nerd Fonts; an `Installed only` toggle hides entries that are not installed. Selecting an entry writes the family and the package named by `packageOption`. `monospace = true` filters the list. |
 | `icon-theme` | an icon theme option, e.g. `stylix.icons.dark` | An inline search list with live sample icons for installed themes and baked preview sheets for uninstalled themes. An `Installed only` toggle hides entries that are not installed. Selecting an entry writes the theme and the package named by `packageOption`; `variant` filters dark or light entries. |

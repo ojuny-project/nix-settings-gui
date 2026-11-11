@@ -275,12 +275,12 @@ mod tests {
     #[test]
     fn scans_widget_presets_from_template() {
         use rowan::ast::AstNode;
-        let bar_path = template_file("modules/04-gui/01-bar.nix");
+        let bar_path = template_file("modules/backend/04-gui/16-bar-widget-catalog.nix");
         if !bar_path.exists() {
             eprintln!("skipping: sibling ojuny-template checkout not available");
             return;
         }
-        let bar = std::fs::read_to_string(bar_path).expect("01-bar.nix is readable");
+        let bar = std::fs::read_to_string(bar_path).expect("16-bar-widget-catalog.nix is readable");
         let Ok(root) = rnix::Root::parse(&bar).ok() else {
             panic!("01-bar.nix parses");
         };

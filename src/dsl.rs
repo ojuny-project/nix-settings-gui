@@ -470,6 +470,10 @@ pub struct OptionSpec {
     pub apply_command: Option<String>,
     /// Whether the `users` widget also generates a per-user home-manager block.
     pub home_manager: bool,
+    /// Feature paths the attached widget must not show or write. Entries are
+    /// relative to the attached option, for example `width`, `hdr`, or
+    /// `hdr.sdrEotf`.
+    pub disabled_features: Option<Vec<String>>,
 }
 
 impl OptionSpec {
@@ -515,6 +519,7 @@ impl OptionSpec {
             variant: d.string("variant"),
             apply_command: d.string("applyCommand"),
             home_manager: d.bool("homeManager").unwrap_or(false),
+            disabled_features: d.strings("disabledFeatures"),
         }
     }
 }
@@ -671,6 +676,18 @@ mod tests {
         assert_eq!(
             opt.choices,
             Some(vec!["Europe/Amsterdam".into(), "UTC".into()])
+        );
+    }
+
+    #[test]
+    fn parses_disabled_features() {
+        let text = "/* @option widget = \"monitors\"; disabledFeatures = [ \"width\" \"hdr.sdrEotf\" ]; */";
+        let (kind, d) = parse_comment(text).unwrap();
+        assert_eq!(kind, MarkerKind::Option);
+        let opt = OptionSpec::from_directives(&d);
+        assert_eq!(
+            opt.disabled_features,
+            Some(vec!["width".into(), "hdr.sdrEotf".into()])
         );
     }
 

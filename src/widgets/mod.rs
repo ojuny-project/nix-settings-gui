@@ -30,6 +30,7 @@ mod keybinds;
 mod menu;
 pub(crate) mod menu_icon;
 mod module_list;
+mod monitor_features;
 mod monitor_geometry;
 mod monitor_picker;
 mod monitors;

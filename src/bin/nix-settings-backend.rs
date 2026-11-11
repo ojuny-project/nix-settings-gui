@@ -334,6 +334,7 @@ fn record_json(record: &nix_settings_gui::model::Record) -> Value {
         "description": record.spec.description,
         "widget": record.spec.widget.map(|widget| format!("{widget:?}").to_lowercase()),
         "choices": record.spec.choices,
+        "disabledFeatures": record.spec.disabled_features,
         "advanced": record.spec.advanced,
         "hidden": record.spec.hidden,
         "readonly": record.spec.readonly,

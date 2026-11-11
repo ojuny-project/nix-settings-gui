@@ -934,7 +934,7 @@ fn peel_value(expr: &Expr) -> Option<Expr> {
     }
 }
 
-fn attr_component(attr: &Attr) -> Option<String> {
+pub(crate) fn attr_component(attr: &Attr) -> Option<String> {
     match attr {
         Attr::Ident(ident) => Some(ident.syntax().text().to_string()),
         Attr::Str(s) => match s.normalized_parts().as_slice() {

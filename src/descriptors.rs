@@ -54,6 +54,8 @@ pub struct Descriptor {
     pub tier: Tier,
     #[serde(default, rename = "applyCommand", alias = "apply_command")]
     pub apply_command: Option<String>,
+    #[serde(default, rename = "disabledFeatures", alias = "disabled_features")]
+    pub disabled_features: Option<Vec<String>>,
 }
 
 impl Descriptor {
@@ -71,6 +73,7 @@ impl Descriptor {
             group: self.group.clone(),
             order: self.order,
             apply_command: self.apply_command.clone(),
+            disabled_features: self.disabled_features.clone(),
             ..OptionSpec::default()
         };
         match self.tier {
@@ -679,6 +682,7 @@ mod tests {
             step: None,
             tier: Tier::Normal,
             apply_command: None,
+            disabled_features: None,
         }
     }
 

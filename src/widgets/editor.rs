@@ -109,6 +109,8 @@ pub enum Editor {
         root: gtk::Box,
         rows: Rc<RefCell<Vec<MonitorRow>>>,
         on_change: ChangeHook,
+        error: Option<String>,
+        original: String,
     },
     #[cfg(feature = "ojuny-widgets")]
     Menu {
@@ -284,7 +286,18 @@ impl Editor {
             Editor::File { ui, .. } => ui.borrow().nix_value(),
             Editor::Icon { ui, .. } => ui.borrow().nix_value(),
             Editor::Keybinds { rows, .. } => keybinds_nix(&rows.borrow()),
-            Editor::Monitors { rows, .. } => monitors_nix(&rows.borrow()),
+            Editor::Monitors {
+                rows,
+                error,
+                original,
+                ..
+            } => {
+                if error.is_some() {
+                    original.clone()
+                } else {
+                    monitors_nix(&rows.borrow())
+                }
+            }
             #[cfg(feature = "ojuny-widgets")]
             Editor::Menu { rows, .. } => menu_rows_nix(&rows.borrow()),
             #[cfg(feature = "ojuny-widgets")]
@@ -407,7 +420,9 @@ impl Editor {
                         .iter()
                         .all(|f| f.editor.unchanged(&f.orig_value))
             }),
-            Editor::Monitors { rows, .. } => rows.borrow().iter().all(monitor_row_unchanged),
+            Editor::Monitors { rows, error, .. } => {
+                error.is_some() || rows.borrow().iter().all(monitor_row_unchanged)
+            }
             #[cfg(feature = "ojuny-widgets")]
             Editor::Menu { rows, .. } => menu_rows_unchanged(rows),
             #[cfg(feature = "ojuny-widgets")]
