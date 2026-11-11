@@ -21,12 +21,14 @@ mod display_tests;
 pub(crate) enum ColumnKind {
     Value(value::ValueKind),
     Icon,
+    Dropdown,
 }
 
 /// Paths a table cell needs to resolve files relative to its module.
 pub(crate) struct CellContext {
     pub(crate) module_dir: PathBuf,
     pub(crate) icon_dir: PathBuf,
+    pub(crate) choices: Option<Vec<String>>,
 }
 
 impl CellContext {
@@ -40,6 +42,7 @@ impl CellContext {
         Self {
             module_dir,
             icon_dir,
+            choices: record.spec.choices.clone(),
         }
     }
 }
@@ -488,6 +491,7 @@ pub(crate) fn column_widens(
     match hint {
         None => column_expands(first_row, column),
         Some(ColumnKind::Icon) => true,
+        Some(ColumnKind::Dropdown) => false,
         Some(ColumnKind::Value(hint)) => matches!(
             cell_widget_kind(column_sample(first_row, column), Some(hint)),
             WidgetKind::Text
@@ -517,6 +521,7 @@ pub(crate) fn empty_cell_literal(hint: Option<ColumnKind>) -> String {
         Some(ColumnKind::Value(value::ValueKind::Bool)) => "false",
         Some(ColumnKind::Value(value::ValueKind::Int | value::ValueKind::Float)) => "0",
         Some(ColumnKind::Value(value::ValueKind::String)) => "\"\"",
+        Some(ColumnKind::Dropdown) => "\"\"",
         _ => "null",
     }
     .to_string()
@@ -531,6 +536,7 @@ pub(crate) fn column_type_hint(token: &str) -> Option<ColumnKind> {
         "float" => Some(ColumnKind::Value(value::ValueKind::Float)),
         "str" | "string" | "raw" => Some(ColumnKind::Value(value::ValueKind::String)),
         "icon" | "image" => Some(ColumnKind::Icon),
+        "dropdown" | "enum" => Some(ColumnKind::Dropdown),
         _ => None,
     }
 }
@@ -573,11 +579,24 @@ pub(crate) fn build_cell(
     if hint == Some(ColumnKind::Icon) {
         return build_icon(value, &cell.module_dir, &cell.icon_dir, ctx);
     }
+    if hint == Some(ColumnKind::Dropdown) {
+        let spec = OptionSpec {
+            widget: Some(WidgetKind::Dropdown),
+            choices: cell.choices.clone(),
+            ..OptionSpec::default()
+        };
+        let record = Record {
+            value: value.to_string(),
+            spec,
+            ..Record::default()
+        };
+        return build(&record, None, ctx);
+    }
     let kind = cell_widget_kind(
         value,
         hint.and_then(|hint| match hint {
             ColumnKind::Value(kind) => Some(kind),
-            ColumnKind::Icon => None,
+            ColumnKind::Icon | ColumnKind::Dropdown => None,
         }),
     );
     let spec = OptionSpec {
@@ -769,6 +788,10 @@ mod tests {
             empty_cell_literal(Some(ColumnKind::Icon)),
             "null".to_string()
         );
+        assert_eq!(
+            empty_cell_literal(Some(ColumnKind::Dropdown)),
+            "\"\"".to_string()
+        );
         assert_eq!(empty_cell_literal(None), "null".to_string());
     }
 
@@ -802,6 +825,8 @@ mod tests {
         );
         assert_eq!(column_type_hint("icon"), Some(ColumnKind::Icon));
         assert_eq!(column_type_hint("image"), Some(ColumnKind::Icon));
+        assert_eq!(column_type_hint("dropdown"), Some(ColumnKind::Dropdown));
+        assert_eq!(column_type_hint("ENUM"), Some(ColumnKind::Dropdown));
         assert_eq!(column_type_hint("nope"), None);
     }
 

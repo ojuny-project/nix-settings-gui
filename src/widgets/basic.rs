@@ -51,9 +51,15 @@ pub(crate) fn build_spin(spec: &OptionSpec, value_text: &str) -> gtk::SpinButton
     spin.set_value(value_text.trim().parse::<f64>().unwrap_or(0.0));
     spin.set_halign(gtk::Align::Start);
     if let Some(unit) = non_empty(spec.unit.as_deref()) {
+        let input_unit = unit.clone();
         spin.connect_output(move |spin| {
-            spin.set_text(&format_with_unit(spin.value(), spin.digits(), &unit));
+            spin.set_text(&format_with_unit(spin.value(), spin.digits(), &input_unit));
             glib::Propagation::Stop
+        });
+        spin.connect_input(move |spin| {
+            let text = spin.text();
+            let number = text.split_whitespace().next().unwrap_or("");
+            number.parse::<f64>().ok().map(Ok)
         });
     }
     spin

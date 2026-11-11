@@ -55,12 +55,15 @@ impl StyleChoice {
             let original = super::nix::unwrap_modifiers(&package.record.value);
             let current = package.value.borrow().clone();
             if current.trim() != entry_text(&original).trim() {
-                edits.push(PendingEdit {
-                    file: package.record.file.clone(),
-                    start: package.record.byte_start,
-                    end: package.record.byte_end,
-                    value: package_literal(&current),
-                });
+                let literal = package_literal(&current);
+                if rnix::Root::parse(&literal).ok().is_ok() {
+                    edits.push(PendingEdit {
+                        file: package.record.file.clone(),
+                        start: package.record.byte_start,
+                        end: package.record.byte_end,
+                        value: literal,
+                    });
+                }
             }
         }
         edits

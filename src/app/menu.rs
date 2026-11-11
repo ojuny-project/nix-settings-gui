@@ -289,7 +289,12 @@ fn build_page(app: &Rc<App>, menu: &crate::model::MenuModel) -> MenuPage {
     let records: Rc<std::collections::HashMap<String, crate::model::Record>> = Rc::new(
         menu.records
             .iter()
-            .map(|record| (record.path(), record.clone()))
+            .map(|record| {
+                (
+                    crate::model::normalize_namespace(&record.path()),
+                    record.clone(),
+                )
+            })
             .collect(),
     );
     let mut base_ctx = build_context(app);

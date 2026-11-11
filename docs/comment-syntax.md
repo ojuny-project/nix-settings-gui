@@ -84,7 +84,7 @@ services.pipewire.enable = true;
 | `order`       | integer         | Sort key within the menu or group. Controls with an explicit `order` come first, ordered by value; the rest keep declaration order. |
 | `maxColumns`  | integer         | Maximum children per line for `horizontal-submodule` (default 4). |
 | `columns`     | list of strings | Field names (columns) for `table-attrset` and `table-list`. |
-| `columnTypes` | list of strings | Per-column editor hints for tables: `bool`, `int`, `float`, `str`, or `icon`. |
+| `columnTypes` | list of strings | Per-column editor hints for tables: `bool`, `int`, `float`, `str`, `icon`, or `dropdown`. |
 | `keyEditable` | boolean         | Table: whether cell keys are editable (default `false`). |
 | `firstValueEditable` | boolean   | Table: whether the first cell's value is editable (default `false`). |
 | `advanced`    | boolean         | Collapses the control under "Advanced". |
@@ -344,10 +344,11 @@ monitors = {
 
 Cells are typed automatically: a boolean becomes a switch, a number a spin
 button, anything else a text field, so a cell is never plain text.
-`columnTypes` overrides that per column with `bool`, `int`, `float`, `str`, or
-`icon`. An `icon` column shows a preview with an "Add icon" button; the chosen
-image is copied into `iconDir` and staged with `git add`, and the cell stores
-its path.
+`columnTypes` overrides that per column with `bool`, `int`, `float`, `str`,
+`icon`, or `dropdown`. An `icon` column shows a preview with an "Add icon"
+button; the chosen image is copied into `iconDir` and staged with `git add`,
+and the cell stores its path. A `dropdown` column renders the table's
+`choices` list as a select box and stores the selected value.
 
 `keyEditable` (default `false`) makes each cell's key editable and shows it
 inline as `key = value`. `firstValueEditable` (default `false`) makes the first
