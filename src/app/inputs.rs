@@ -2,6 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use adw::prelude::*;
@@ -18,6 +20,7 @@ use super::state::{App, Msg};
 use crate::nixpkgs as nixpkgs_model;
 
 pub(super) const INPUTS_PAGE: &str = "__flake_inputs";
+pub(super) const INPUTS_LABEL: &str = "Flake Inputs";
 
 pub(super) fn flake_icon_image() -> Option<gtk::Image> {
     let display = gtk::gdk::Display::default()?;
@@ -136,13 +139,12 @@ pub(super) fn update_button(app: &Rc<App>, name: &str) -> gtk::Button {
 /// keep showing the pre-update lock state.
 pub(super) fn refresh_locked_revisions(app: &Rc<App>) {
     let base = app.base.borrow().clone();
-    let lock_path = Path::new(&base).join("flake.lock");
     let mut checks = app.input_checks.borrow_mut();
     for (name, result) in checks.iter_mut() {
         let Ok(status) = result else {
             continue;
         };
-        let Some(locked) = flake_lock::read_input(&lock_path, name) else {
+        let Some(locked) = flake_lock::read_input_in(Path::new(&base), name) else {
             continue;
         };
         status.current_rev = locked.rev;
@@ -192,21 +194,75 @@ fn scan_updates(app: &Rc<App>) {
             return;
         }
     };
+    let total = inputs.len();
     let epoch = app.input_check_epoch.get() + 1;
     app.input_check_epoch.set(epoch);
     app.input_checks.borrow_mut().clear();
     app.input_checking.set(true);
+    let cancel = Arc::new(AtomicBool::new(false));
+    *app.input_check_cancel.borrow_mut() = Some(cancel.clone());
     app.status.set_text("Checking flake inputs for updates...");
     let app_for_refresh = app.clone();
     glib::timeout_add_local_once(Duration::from_millis(0), move || refresh(&app_for_refresh));
+    let worker_cancel = cancel.clone();
     spawn(&app.tx, move |tx| {
         let mut results = Vec::new();
-        for input in inputs {
-            let result = flake_update::check(&base, &input);
-            results.push((input.name, result));
+        for (index, input) in inputs.into_iter().enumerate() {
+            if worker_cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            let name = input.name.clone();
+            let result = flake_update::check_with(
+                &base,
+                &input,
+                flake_update::CHECK_TIMEOUT,
+                &worker_cancel,
+            );
+            let _ = tx.send_blocking(Msg::InputCheckProgress {
+                epoch,
+                name: name.clone(),
+                index: index + 1,
+                total,
+                result: result.clone(),
+            });
+            results.push((name, result));
         }
-        let _ = tx.send_blocking(Msg::InputCheckDone { epoch, results });
+        let cancelled = worker_cancel.load(Ordering::Relaxed);
+        let _ = tx.send_blocking(Msg::InputCheckDone {
+            epoch,
+            results,
+            cancelled,
+        });
     });
+    schedule_check_watchdog(app, epoch, cancel, total);
+}
+
+/// Stop a check that outlives every per-input deadline, so the button can never
+/// stay disabled behind a worker that stopped reporting.
+fn schedule_check_watchdog(app: &Rc<App>, epoch: u64, cancel: Arc<AtomicBool>, total: usize) {
+    let margin = Duration::from_secs(10);
+    let deadline = flake_update::CHECK_TIMEOUT * total as u32 + margin;
+    let app = app.clone();
+    glib::timeout_add_local_once(deadline, move || {
+        if app.input_check_epoch.get() != epoch || !app.input_checking.get() {
+            return;
+        }
+        cancel.store(true, Ordering::Relaxed);
+        app.input_check_epoch.set(epoch.wrapping_add(1));
+        app.input_checking.set(false);
+        app.input_check_cancel.borrow_mut().take();
+        app.status.set_text("Update check timed out");
+        if app.showing_inputs.get() {
+            refresh(&app);
+        }
+    });
+}
+
+fn cancel_update_check(app: &Rc<App>) {
+    if let Some(cancel) = app.input_check_cancel.borrow().as_ref() {
+        cancel.store(true, Ordering::Relaxed);
+        app.status.set_text("Cancelling update check...");
+    }
 }
 
 fn update_all_inputs(app: &Rc<App>, names: &[String]) {
@@ -242,7 +298,7 @@ pub(super) fn refresh(app: &Rc<App>) {
     content.set_hexpand(true);
 
     let heading = gtk::Label::builder()
-        .label("Flake Inputs")
+        .label(INPUTS_LABEL)
         .xalign(0.0)
         .css_classes(["title-2"])
         .build();
@@ -313,6 +369,13 @@ pub(super) fn refresh(app: &Rc<App>) {
     }
     scan_row.append(&scan);
     scan_row.append(&spinner);
+    if app.input_checking.get() {
+        let cancel = gtk::Button::with_label("Cancel");
+        cancel.add_css_class("pill");
+        let app = app.clone();
+        cancel.connect_clicked(move |_| cancel_update_check(&app));
+        scan_row.append(&cancel);
+    }
     if !updatable.is_empty() {
         let update_all = gtk::Button::with_label("Update all inputs");
         update_all.add_css_class("suggested-action");
@@ -837,6 +900,7 @@ pub(super) fn save_edits(app: &Rc<App>, edits: Vec<edit::PendingEdit>) {
     app.input_checks.borrow_mut().clear();
     app.input_check_epoch.set(app.input_check_epoch.get() + 1);
     app.input_checking.set(false);
+    app.input_check_cancel.borrow_mut().take();
     app.status.set_text("Saving flake inputs...");
     spawn(&app.tx, move |tx| {
         let result = edit::apply(&edits, &root).map(|_| ());

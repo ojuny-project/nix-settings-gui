@@ -8,6 +8,10 @@ model, and the flows that act on files.
 The stack reuses `nix-regedit`'s engine: the `rnix` scanner and record model,
 the `nixd` JSON-RPC client, and the span-patch plus `nixfmt` write path.
 
+One window exists per user session. A second launch raises the existing window
+and applies its `--page` value; it does not create a second window or a second
+message pump.
+
 ## 1. Window layout
 
 ```
@@ -119,6 +123,10 @@ scan with blank prerequisites reports the missing field inline. Channel
 selection uses a dropdown of discovered `nixos-*` branches; hosted types expose
 owner, repository, ref, optional commit, host, directory, and git fetch
 switches; path adds a folder chooser; tarball and file add a NAR hash field.
+
+`Check for updates` reports progress for each input, offers a Cancel action, and
+stops an input that exceeds its timeout. A failed or timed-out input shows its
+error inline on that input's row instead of leaving the spinner running.
 
 ## 2. Bottom bar
 

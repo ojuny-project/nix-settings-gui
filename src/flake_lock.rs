@@ -42,6 +42,12 @@ pub fn read_input(path: &Path, name: &str) -> Option<LockedInput> {
     read(path).ok().and_then(|lock| lock.input(name))
 }
 
+/// Read one direct input from `flake.lock` inside a flake directory. Passing the
+/// directory keeps callers from handing this function a `flake.nix` path.
+pub fn read_input_in(dir: &Path, name: &str) -> Option<LockedInput> {
+    read_input(&dir.join("flake.lock"), name)
+}
+
 impl LockFile {
     pub fn input(&self, name: &str) -> Option<LockedInput> {
         let root = self.nodes.get(&self.root)?;
@@ -123,5 +129,25 @@ mod tests {
     #[test]
     fn returns_none_for_unknown_input() {
         assert!(lock().input("missing").is_none());
+    }
+
+    #[test]
+    fn reads_an_input_from_a_flake_directory() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "nsg-lock-in-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("flake.nix"), "{}").unwrap();
+        assert!(read_input_in(&dir, "nixpkgs").is_none());
+        std::fs::write(dir.join("flake.lock"), LOCK).unwrap();
+        let input = read_input_in(&dir, "nixpkgs").unwrap();
+        assert_eq!(
+            input.rev.as_deref(),
+            Some("7fd4004d0511991fff3a0524856a9be09e28c5f0")
+        );
     }
 }

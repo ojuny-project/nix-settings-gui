@@ -42,7 +42,10 @@ nix run github:ojuny-project/nix-settings-gui
 ```
 
 The settings window opens. Launch arguments are `--page <regex>` and
-`--descriptors <file>`.
+`--descriptors <file>`. `--page` matches visible menus and the built-in
+`Flake Inputs` page. A second launch raises the existing window and applies its
+`--page` value. A pattern that matches neither keeps the open page, or opens
+`Flake Inputs` when no menu is open.
 
 The flake also builds `nix-settings-backend`, a local JSON-RPC endpoint for
 frontends that cannot link the Rust engine. Run it with `--stdio` for an

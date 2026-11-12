@@ -84,7 +84,7 @@ fn run(app: &Rc<App>, request: ApplyRequest) {
 /// Run the command in a shell and report its error output when it fails.
 fn run_command(command: &str, base: &str) -> Result<(), String> {
     let mut process = std::process::Command::new("sh");
-    process.arg("-c").arg(command);
+    process.arg("-lc").arg(command);
     if !base.is_empty() {
         process.current_dir(base);
     }

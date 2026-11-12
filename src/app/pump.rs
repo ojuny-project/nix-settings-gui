@@ -370,11 +370,33 @@ pub(super) fn handle_msg(app: &Rc<App>, tx: &Tx, msg: Msg) {
             app.status.set_text("Flake input save failed");
             show_error(&app.window, &e);
         }
-        Msg::InputCheckDone { epoch, results } => {
+        Msg::InputCheckProgress {
+            epoch,
+            name,
+            index,
+            total,
+            result,
+        } => {
+            if epoch != app.input_check_epoch.get() {
+                return;
+            }
+            app.input_checks.borrow_mut().insert(name.clone(), result);
+            app.status
+                .set_text(&format!("Checking {name} ({index}/{total})"));
+            if app.showing_inputs.get() {
+                inputs::refresh(app);
+            }
+        }
+        Msg::InputCheckDone {
+            epoch,
+            results,
+            cancelled,
+        } => {
             if epoch != app.input_check_epoch.get() {
                 return;
             }
             app.input_checking.set(false);
+            app.input_check_cancel.borrow_mut().take();
             {
                 let mut checks = app.input_checks.borrow_mut();
                 checks.clear();
@@ -382,9 +404,8 @@ pub(super) fn handle_msg(app: &Rc<App>, tx: &Tx, msg: Msg) {
                     checks.insert(name, result);
                 }
             }
-            let updates = app
-                .input_checks
-                .borrow()
+            let checks = app.input_checks.borrow();
+            let updates = checks
                 .values()
                 .filter(|result| {
                     matches!(
@@ -398,12 +419,20 @@ pub(super) fn handle_msg(app: &Rc<App>, tx: &Tx, msg: Msg) {
                     )
                 })
                 .count();
-            if updates == 0 {
+            let errors = checks.values().filter(|result| result.is_err()).count();
+            if cancelled {
+                app.status.set_text("Update check cancelled");
+            } else if errors > 0 {
+                app.status.set_text(&format!(
+                    "{errors} flake input check(s) failed, {updates} update(s) available"
+                ));
+            } else if updates == 0 {
                 app.status.set_text("Flake inputs are up to date");
             } else {
                 app.status
                     .set_text(&format!("{updates} flake input update(s) available"));
             }
+            drop(checks);
             if app.showing_inputs.get() {
                 inputs::refresh(app);
             }

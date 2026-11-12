@@ -15,6 +15,11 @@ at the top of the window. The app scans the directory tree, skipping
 
 Recent paths are remembered, so the selector offers them again next time.
 
+Only one window is open per session. A second launch raises the existing window
+and applies its `--page` value. `--page` matches visible menus and the built-in
+`Flake Inputs` page; a pattern that matches neither keeps the open page, or
+opens `Flake Inputs` when no menu is open.
+
 With `auto_git_sync` enabled, opening a flake pulls its branch with `--ff-only`
 first. A failed pull is shown as an error and the scan still runs on the local
 files.
@@ -54,6 +59,10 @@ GitHub or GitLab API through `curl`, optionally with `GITHUB_TOKEN` or
 `GITLAB_TOKEN`. Results fill the field's dropdown. The nixpkgs card also shows
 the revision pinned in `flake.lock`; changing the URL does not rewrite the lock
 file.
+
+**Check for updates** reports progress for each input and can be cancelled. An
+input that stops responding is stopped at its timeout, and a failed or
+timed-out input shows the error inline on its row.
 
 ## 4. Changing a value
 

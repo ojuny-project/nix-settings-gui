@@ -1,5 +1,6 @@
 #![allow(deprecated)]
 
+use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 
@@ -52,9 +53,10 @@ fn main() -> glib::ExitCode {
     }
     let application = adw::Application::builder()
         .application_id(app::APP_ID)
+        .flags(gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
     application.connect_startup(|_| {
         gtk::Window::set_default_icon_name("preferences-system");
     });
-    app::run(&application, args.page, args.descriptors)
+    app::run(&application)
 }

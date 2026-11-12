@@ -8,6 +8,7 @@ use gtk::glib;
 use gtk::prelude::*;
 use regex::Regex;
 
+use crate::cli;
 use crate::config::AppConfig;
 
 mod apply;
@@ -32,7 +33,7 @@ use controls::apply_control_filter;
 use dialogs::{open_add_file, open_configure};
 use enrich::query_current_page;
 use git::start_git_sync;
-use menu::{ensure_page, open_flake, rebuild_menu_list, rebuild_view};
+use menu::{apply_page_pattern, ensure_page, open_flake, rebuild_menu_list, rebuild_view};
 use pump::{handle_msg, populate_flakes};
 use save::{collect_edits, discard_changes, preview_changes, reload, run_changes_prompt, save_all};
 use state::{App, Msg, PackageService, PluginRegistryState, Tx};
@@ -164,7 +165,7 @@ fn build_ui(
     }
     inputs_content.append(
         &gtk::Label::builder()
-            .label("Flake Inputs")
+            .label(inputs::INPUTS_LABEL)
             .xalign(0.0)
             .hexpand(true)
             .ellipsize(gtk::pango::EllipsizeMode::End)
@@ -356,7 +357,7 @@ fn build_ui(
         .content(&toolbar_view)
         .build();
 
-    let show_inputs_by_default = page_pattern.is_none();
+    let page_pending = page_pattern.is_some();
 
     let app_state = Rc::new(App {
         window,
@@ -372,7 +373,7 @@ fn build_ui(
         inputs_list,
         inputs_page,
         inputs_warning,
-        showing_inputs: Cell::new(show_inputs_by_default),
+        showing_inputs: Cell::new(true),
         stack,
         nixd_banner,
         status,
@@ -395,6 +396,7 @@ fn build_ui(
         input_checks: RefCell::new(HashMap::new()),
         input_checking: Cell::new(false),
         input_check_epoch: Cell::new(0),
+        input_check_cancel: RefCell::new(None),
         apply_state: ApplyState::new(),
         tx: tx.clone(),
         descriptors: RefCell::new(descriptors),
@@ -409,7 +411,8 @@ fn build_ui(
         hosts: RefCell::new(Vec::new()),
         current_host: RefCell::new(String::new()),
         current_file: RefCell::new(String::new()),
-        page_pattern,
+        page_pattern: RefCell::new(page_pattern),
+        page_pending: Cell::new(page_pending),
         flakes: RefCell::new(Vec::new()),
         pages: RefCell::new(Vec::new()),
         pages_ready: Cell::new(false),
@@ -422,9 +425,7 @@ fn build_ui(
         pending_rebuild: Cell::new(false),
         watchers: RefCell::new(Vec::new()),
     });
-    if show_inputs_by_default {
-        app_state.show_page(inputs::INPUTS_PAGE);
-    }
+    app_state.show_page(inputs::INPUTS_PAGE);
     {
         let app = app_state.clone();
         sidebar_toggle.connect_toggled(move |button| {
@@ -470,6 +471,7 @@ fn build_ui(
             .inputs_list
             .clone()
             .connect_row_activated(move |_, _| {
+                app.page_pending.set(false);
                 app.showing_inputs.set(true);
                 app.list.unselect_all();
                 app.show_page(inputs::INPUTS_PAGE);
@@ -575,6 +577,7 @@ fn wire(
             if !app.pages_ready.get() {
                 return;
             }
+            app.page_pending.set(false);
             app.showing_inputs.set(false);
             app.inputs_list.unselect_all();
             ensure_page(&app, name.as_str());
@@ -754,34 +757,126 @@ fn install_actions(app: &Rc<App>) {
     }
 }
 
-pub fn run(
-    app: &adw::Application,
+fn ensure_ui(
+    application: &adw::Application,
+    slot: &Rc<RefCell<Option<Rc<App>>>>,
+    tx: &Tx,
     page_pattern: Option<Regex>,
     descriptors_path: Option<String>,
-) -> glib::ExitCode {
+) -> Rc<App> {
+    if let Some(ui) = slot.borrow().as_ref() {
+        return ui.clone();
+    }
+    let ui = build_ui(application, tx, page_pattern, descriptors_path);
+    *slot.borrow_mut() = Some(ui.clone());
+    if let Some(path) = populate_flakes(&ui) {
+        open_flake(&ui, tx, &path);
+    } else {
+        ui.status
+            .set_text("No flake found; use Configure to set a path");
+    }
+    ui
+}
+
+/// Drop the program name from a forwarded command line, if GLib kept it.
+fn forwarded_args(args: Vec<std::ffi::OsString>) -> Vec<String> {
+    let mut args: Vec<String> = args
+        .into_iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    let has_program_name = args
+        .first()
+        .map(|first| !first.starts_with('-'))
+        .unwrap_or(false);
+    if has_program_name {
+        args.remove(0);
+    }
+    args
+}
+
+pub fn run(app: &adw::Application) -> glib::ExitCode {
     crate::nixd::init();
     let (tx, rx) = async_channel::unbounded::<Msg>();
-    let rx_cell = std::cell::Cell::new(Some(rx));
+    let ui: Rc<RefCell<Option<Rc<App>>>> = Rc::new(RefCell::new(None));
 
-    app.connect_activate(move |app| {
-        let ui = build_ui(app, &tx, page_pattern.clone(), descriptors_path.clone());
-        if let Some(rx) = rx_cell.take() {
-            let ui_for_rx = ui.clone();
-            let tx_for_rx = tx.clone();
-            glib::MainContext::default().spawn_local(async move {
-                while let Ok(msg) = rx.recv().await {
-                    handle_msg(&ui_for_rx, &tx_for_rx, msg);
+    {
+        let ui = ui.clone();
+        let tx = tx.clone();
+        glib::MainContext::default().spawn_local(async move {
+            while let Ok(msg) = rx.recv().await {
+                let app = ui.borrow().clone();
+                if let Some(app) = app {
+                    handle_msg(&app, &tx, msg);
                 }
-            });
-        }
-        if let Some(path) = populate_flakes(&ui) {
-            open_flake(&ui, &tx, &path);
-        } else {
-            ui.status
-                .set_text("No flake found; use Configure to set a path");
-        }
-        ui.window.present();
-    });
+            }
+        });
+    }
 
-    app.run_with_args::<&str>(&[])
+    {
+        let ui = ui.clone();
+        let tx = tx.clone();
+        app.connect_command_line(move |application, command_line| {
+            let parsed = cli::LaunchArgs::parse(forwarded_args(command_line.arguments()));
+            let (page_pattern, descriptors_path) = match parsed {
+                Ok(args) => (args.page, args.descriptors),
+                Err(error) => {
+                    eprintln!("nix-settings-gui: {error}");
+                    command_line.set_exit_status(2);
+                    return 2;
+                }
+            };
+            let ui = ensure_ui(
+                application,
+                &ui,
+                &tx,
+                page_pattern.clone(),
+                descriptors_path,
+            );
+            match page_pattern {
+                Some(pattern) => apply_page_pattern(&ui, &pattern),
+                None => ui.window.present(),
+            }
+            command_line.set_exit_status(0);
+            0
+        });
+    }
+
+    {
+        let ui = ui.clone();
+        let tx = tx.clone();
+        app.connect_activate(move |application| {
+            let ui = ensure_ui(application, &ui, &tx, None, None);
+            ui.window.present();
+        });
+    }
+
+    app.run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::forwarded_args;
+    use std::ffi::OsString;
+
+    #[test]
+    fn drops_a_forwarded_program_name() {
+        let args = forwarded_args(vec![
+            OsString::from("/usr/bin/nix-settings-gui"),
+            OsString::from("--page"),
+            OsString::from("Theme"),
+        ]);
+        assert_eq!(args, vec!["--page".to_string(), "Theme".to_string()]);
+    }
+
+    #[test]
+    fn drops_a_forwarded_symlink_name() {
+        let args = forwarded_args(vec![OsString::from("nsg"), OsString::from("--page")]);
+        assert_eq!(args, vec!["--page".to_string()]);
+    }
+
+    #[test]
+    fn keeps_flags_when_the_program_name_is_absent() {
+        let args = forwarded_args(vec![OsString::from("--page"), OsString::from("Theme")]);
+        assert_eq!(args, vec!["--page".to_string(), "Theme".to_string()]);
+    }
 }

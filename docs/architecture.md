@@ -138,7 +138,8 @@ and reports back over an `async-channel`, so the UI thread never blocks.
 An option can carry an `applyCommand`, which runs it right away instead of
 waiting for a save. The widget that changed hands the command and the new
 value to the app through a `BuildContext` hook; `app/apply.rs` debounces the
-change, keeps one command running at a time, and runs it through `sh -c`.
+change, keeps one command running at a time, and runs it through `sh -lc` so
+it sees the user's login environment.
 `apply.rs` holds the pure part: it substitutes `%%val%%` with the option's
 plain value and quotes it for the shell.
 

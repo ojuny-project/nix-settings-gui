@@ -19,6 +19,7 @@ pub(super) fn open_flake(app: &Rc<App>, tx: &Tx, path: &str) {
     app.plugin_registry.reset();
     app.input_checks.borrow_mut().clear();
     app.input_checking.set(false);
+    app.input_check_cancel.borrow_mut().take();
     app.input_check_epoch.set(app.input_check_epoch.get() + 1);
     app.invalidate_wallpaper();
     app.config.borrow_mut().remember(path);
@@ -47,9 +48,77 @@ pub(super) fn rebuild_view(app: &Rc<App>) {
 fn choose_current_page(app: &Rc<App>) {
     let menus = sorted_menus(app);
     let current = app.current_file.borrow().clone();
-    if let Some(file) = select_menu_file(&menus, &current, app.page_pattern.as_ref()) {
-        *app.current_file.borrow_mut() = file;
+    let pattern = app.page_pattern.borrow().clone();
+    let resolve_pattern = app.page_pending.get() && app.scan.borrow().is_some();
+    if resolve_pattern {
+        app.page_pending.set(false);
+        if let Some(pattern) = pattern.as_ref() {
+            if pattern_matches_inputs(pattern) {
+                app.showing_inputs.set(true);
+                app.current_file.borrow_mut().clear();
+            } else if let Some(file) = select_menu_file(&menus, pattern) {
+                app.showing_inputs.set(false);
+                *app.current_file.borrow_mut() = file;
+            } else if !page_is_open(app) {
+                app.showing_inputs.set(true);
+                app.current_file.borrow_mut().clear();
+            }
+            return;
+        }
     }
+    if app.showing_inputs.get() {
+        return;
+    }
+    if !menus.iter().any(|menu| menu.file == current) {
+        if let Some(first) = menus.first() {
+            *app.current_file.borrow_mut() = first.file.clone();
+        }
+    }
+}
+
+fn page_is_open(app: &Rc<App>) -> bool {
+    app.showing_inputs.get() || !app.current_file.borrow().is_empty()
+}
+
+fn pattern_matches_inputs(pattern: &regex::Regex) -> bool {
+    pattern.is_match(super::inputs::INPUTS_LABEL)
+}
+
+/// Navigate to the page selected by a second launch's `--page`, or leave the
+/// current page alone when the pattern matches neither a visible menu nor the
+/// built-in Flake Inputs page.
+pub(super) fn apply_page_pattern(app: &Rc<App>, pattern: &regex::Regex) {
+    *app.page_pattern.borrow_mut() = Some(pattern.clone());
+    if app.scan.borrow().is_none() {
+        app.page_pending.set(true);
+        app.window.present();
+        return;
+    }
+    app.page_pending.set(false);
+    let menus = sorted_menus(app);
+    if pattern_matches_inputs(pattern) {
+        show_inputs_page(app);
+    } else if let Some(file) = select_menu_file(&menus, pattern) {
+        app.showing_inputs.set(false);
+        app.inputs_list.unselect_all();
+        ensure_page(app, &file);
+        app.show_page(&file);
+        *app.current_file.borrow_mut() = file.clone();
+        select_file(app, &file);
+        super::controls::apply_control_filter(app);
+        super::enrich::query_current_page(app, &app.tx);
+    } else if !page_is_open(app) {
+        show_inputs_page(app);
+    }
+    app.window.present();
+}
+
+fn show_inputs_page(app: &Rc<App>) {
+    app.showing_inputs.set(true);
+    app.current_file.borrow_mut().clear();
+    app.list.unselect_all();
+    super::inputs::refresh(app);
+    app.show_page(super::inputs::INPUTS_PAGE);
 }
 
 fn visible_menus(app: &Rc<App>) -> Vec<crate::model::MenuModel> {
@@ -85,23 +154,11 @@ fn sorted_menus(app: &Rc<App>) -> Vec<MenuModel> {
     menus
 }
 
-fn select_menu_file(
-    menus: &[MenuModel],
-    current: &str,
-    pattern: Option<&regex::Regex>,
-) -> Option<String> {
-    if menus.iter().any(|menu| menu.file == current) {
-        return Some(current.to_string());
-    }
-    if let Some(pattern) = pattern {
-        if let Some(menu) = menus
-            .iter()
-            .find(|menu| pattern.is_match(&menu.display_name()) || pattern.is_match(&menu.file))
-        {
-            return Some(menu.file.clone());
-        }
-    }
-    menus.first().map(|menu| menu.file.clone())
+fn select_menu_file(menus: &[MenuModel], pattern: &regex::Regex) -> Option<String> {
+    menus
+        .iter()
+        .find(|menu| pattern.is_match(&menu.display_name()) || pattern.is_match(&menu.file))
+        .map(|menu| menu.file.clone())
 }
 
 fn menu_matches(menu: &crate::model::MenuModel, query: &str) -> bool {
@@ -207,19 +264,21 @@ fn rebuild_pages(app: &Rc<App>) {
 
     let menus = sorted_menus(app);
     let mut pages = Vec::new();
-    let current = app.current_file.borrow().clone();
-    if let Some(file) = select_menu_file(&menus, &current, None) {
-        if let Some(menu) = menus.iter().find(|menu| menu.file == file) {
-            let page = build_page(app, menu);
-            pages.push(page);
-        }
-        app.pages.replace(pages);
-        if !app.showing_inputs.get() {
+    if !app.showing_inputs.get() {
+        let current = app.current_file.borrow().clone();
+        if let Some(menu) = menus.iter().find(|menu| menu.file == current) {
+            pages.push(build_page(app, menu));
+            let file = menu.file.clone();
+            app.pages.replace(pages);
             app.inputs_list.unselect_all();
             app.show_page(&file);
+            *app.current_file.borrow_mut() = file.clone();
+            select_file(app, &file);
+        } else {
+            app.pages.replace(pages);
         }
-        *app.current_file.borrow_mut() = file.clone();
-        select_file(app, &file);
+    } else {
+        app.pages.replace(pages);
     }
 
     super::controls::apply_control_filter(app);
@@ -559,39 +618,29 @@ mod tests {
         ];
         let pattern = regex::Regex::new("bar|dock").unwrap();
         assert_eq!(
-            select_menu_file(&menus, "", Some(&pattern)).as_deref(),
+            select_menu_file(&menus, &pattern).as_deref(),
             Some("bar.nix")
         );
     }
 
     #[test]
-    fn falls_back_to_topmost_when_no_page_matches() {
+    fn returns_none_when_no_visible_page_matches() {
         let menus = vec![
             menu("01-Users", 10, "User", "user.nix"),
             menu("02-Core", 10, "Bar", "bar.nix"),
         ];
         let pattern = regex::Regex::new("missing").unwrap();
-        assert_eq!(
-            select_menu_file(&menus, "", Some(&pattern)).as_deref(),
-            Some("user.nix")
-        );
-        assert_eq!(
-            select_menu_file(&menus, "", None).as_deref(),
-            Some("user.nix")
-        );
+        assert_eq!(select_menu_file(&menus, &pattern), None);
     }
 
     #[test]
-    fn keeps_the_current_page_when_it_is_visible() {
-        let menus = vec![
-            menu("01-Users", 10, "User", "user.nix"),
-            menu("02-Core", 10, "Bar", "bar.nix"),
-        ];
-        let pattern = regex::Regex::new("user").unwrap();
-        assert_eq!(
-            select_menu_file(&menus, "bar.nix", Some(&pattern)).as_deref(),
-            Some("bar.nix")
-        );
+    fn matches_the_builtin_inputs_page_by_label() {
+        assert!(pattern_matches_inputs(
+            &regex::Regex::new("^Flake Inputs$").unwrap()
+        ));
+        assert!(!pattern_matches_inputs(
+            &regex::Regex::new("^Patches$").unwrap()
+        ));
     }
 
     #[test]

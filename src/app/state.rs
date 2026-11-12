@@ -56,9 +56,17 @@ pub(super) enum Msg {
     GitSaveChecked(Result<bool, String>),
     GitSynced(Result<String, String>),
     InputsSaved(Result<(), String>),
+    InputCheckProgress {
+        epoch: u64,
+        name: String,
+        index: usize,
+        total: usize,
+        result: Result<crate::flake_update::InputStatus, String>,
+    },
     InputCheckDone {
         epoch: u64,
         results: Vec<(String, Result<crate::flake_update::InputStatus, String>)>,
+        cancelled: bool,
     },
     InputUpdated(Result<String, String>),
     InputsUpdatedAll(Result<usize, String>),
@@ -260,6 +268,7 @@ pub(super) struct App {
         RefCell<HashMap<String, Result<crate::flake_update::InputStatus, String>>>,
     pub(super) input_checking: Cell<bool>,
     pub(super) input_check_epoch: Cell<u64>,
+    pub(super) input_check_cancel: RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
     pub(super) apply_state: Rc<ApplyState>,
     pub(super) tx: Tx,
     /// Descriptor sidecar entries, empty when no file was supplied.
@@ -281,7 +290,9 @@ pub(super) struct App {
     pub(super) hosts: RefCell<Vec<String>>,
     pub(super) current_host: RefCell<String>,
     pub(super) current_file: RefCell<String>,
-    pub(super) page_pattern: Option<regex::Regex>,
+    pub(super) page_pattern: RefCell<Option<regex::Regex>>,
+    /// True while a launch `--page` pattern still needs its first resolution.
+    pub(super) page_pending: Cell<bool>,
 
     pub(super) flakes: RefCell<Vec<PathBuf>>,
     pub(super) pages: RefCell<Vec<MenuPage>>,

@@ -4,9 +4,14 @@ pub const HELP: &str = "\
 Usage: nix-settings-gui [OPTIONS]
 
 Options:
-  --page <regex>        Open the menu whose name or file matches <regex>
+  --page <regex>        Open the visible menu whose name or file matches
+                        <regex>; \"Flake Inputs\" opens the built-in page.
+                        A miss keeps the open menu, or opens Flake Inputs
+                        when no menu is open.
   --descriptors <file>  Load descriptor sidecar definitions from <file>
-  -h, --help            Print this help and exit";
+  -h, --help            Print this help and exit
+
+A second launch raises the existing window and applies its --page value.";
 
 pub struct LaunchArgs {
     pub page: Option<Regex>,
@@ -114,5 +119,12 @@ mod tests {
         let args = parse(&["--help", "--page", "["]).unwrap();
         assert!(args.help);
         assert!(args.page.is_none());
+    }
+
+    #[test]
+    fn help_documents_pages_and_single_instance() {
+        assert!(HELP.contains("visible menu"));
+        assert!(HELP.contains("Flake Inputs"));
+        assert!(HELP.contains("second launch raises"));
     }
 }

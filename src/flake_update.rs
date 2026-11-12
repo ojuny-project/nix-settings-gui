@@ -1,5 +1,8 @@
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -36,9 +39,28 @@ impl InputStatus {
     }
 }
 
+/// How long one input check may wait for `nix flake metadata`.
+pub const CHECK_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long one `nix flake update` invocation may run.
+pub const UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// Compare the locked revision of one direct input with the revision its URL
 /// currently resolves to.
+#[allow(dead_code)]
 pub fn check(base: &str, input: &FlakeInput) -> Result<InputStatus, String> {
+    check_with(base, input, CHECK_TIMEOUT, &AtomicBool::new(false))
+}
+
+/// `check` with an explicit per-input timeout and a cancellation flag.
+pub fn check_with(
+    base: &str,
+    input: &FlakeInput,
+    limit: Duration,
+    cancel: &AtomicBool,
+) -> Result<InputStatus, String> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err("update check cancelled".to_string());
+    }
     let Some(url) = input
         .url
         .as_deref()
@@ -53,8 +75,8 @@ pub fn check(base: &str, input: &FlakeInput) -> Result<InputStatus, String> {
         }
     }
 
-    let current = flake_lock::read_input(&Path::new(base).join("flake.lock"), &input.name);
-    let (remote_rev, remote_date) = remote_locked(base, url)?;
+    let current = flake_lock::read_input_in(Path::new(base), &input.name);
+    let (remote_rev, remote_date) = remote_locked(base, url, limit, cancel)?;
     let Some(remote_rev) = remote_rev else {
         return Ok(InputStatus::skipped("latest revision unavailable"));
     };
@@ -109,12 +131,17 @@ fn run_update(base: &str, names: &[&str]) -> Result<(), String> {
     if names.is_empty() {
         return Err("no flake inputs selected".to_string());
     }
-    let output = Command::new("nix")
+    let mut command = Command::new("nix");
+    command
         .args(["flake", "update"])
         .args(names)
-        .current_dir(base)
-        .output()
-        .map_err(|e| format!("cannot run nix flake update: {e}"))?;
+        .current_dir(base);
+    let output = run_with_timeout(
+        command,
+        "nix flake update",
+        UPDATE_TIMEOUT,
+        &AtomicBool::new(false),
+    )?;
     if output.status.success() {
         return Ok(());
     }
@@ -128,15 +155,18 @@ fn run_update(base: &str, names: &[&str]) -> Result<(), String> {
     Err(detail.trim().to_string())
 }
 
-fn remote_locked(base: &str, url: &str) -> Result<(Option<String>, Option<i64>), String> {
+fn remote_locked(
+    base: &str,
+    url: &str,
+    limit: Duration,
+    cancel: &AtomicBool,
+) -> Result<(Option<String>, Option<i64>), String> {
     let mut command = Command::new("nix");
     command.args(["flake", "metadata", "--json", "--no-write-lock-file", url]);
     if !base.trim().is_empty() {
         command.current_dir(base);
     }
-    let output = command
-        .output()
-        .map_err(|e| format!("cannot run nix flake metadata: {e}"))?;
+    let output = run_with_timeout(command, "nix flake metadata", limit, cancel)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let detail = stderr
@@ -162,6 +192,78 @@ fn metadata_locked(value: &Value) -> (Option<String>, Option<i64>) {
         .and_then(Value::as_i64)
         .or_else(|| value.get("lastModified").and_then(Value::as_i64));
     (rev, date)
+}
+
+/// Run a command with a hard deadline and a cancellation flag. The child is
+/// killed when either fires, so a network stall cannot leave the check busy.
+fn run_with_timeout(
+    mut command: Command,
+    label: &str,
+    limit: Duration,
+    cancel: &AtomicBool,
+) -> Result<Output, String> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("cannot run {label}: {error}"))?;
+    let mut out_reader = child.stdout.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            let mut buffer = Vec::new();
+            let _ = pipe.read_to_end(&mut buffer);
+            buffer
+        })
+    });
+    let mut err_reader = child.stderr.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            let mut buffer = Vec::new();
+            let _ = pipe.read_to_end(&mut buffer);
+            buffer
+        })
+    });
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        if cancel.load(Ordering::Relaxed) {
+            command_abort(&mut child, &mut out_reader, &mut err_reader);
+            return Err(format!("{label} cancelled"));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(error) => {
+                command_abort(&mut child, &mut out_reader, &mut err_reader);
+                return Err(format!("cannot wait for {label}: {error}"));
+            }
+        }
+        if Instant::now() >= deadline {
+            command_abort(&mut child, &mut out_reader, &mut err_reader);
+            return Err(format!("{label} timed out after {}s", limit.as_secs()));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    let stdout = join_reader(out_reader.take()).unwrap_or_default();
+    let stderr = join_reader(err_reader.take()).unwrap_or_default();
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+/// Kill the child and detach its pipe readers, so an abort returns at once even
+/// when a grandchild keeps a pipe open.
+fn command_abort(
+    child: &mut std::process::Child,
+    out_reader: &mut Option<std::thread::JoinHandle<Vec<u8>>>,
+    err_reader: &mut Option<std::thread::JoinHandle<Vec<u8>>>,
+) {
+    let _ = child.kill();
+    let _ = child.wait();
+    drop(out_reader.take());
+    drop(err_reader.take());
+}
+
+fn join_reader(handle: Option<std::thread::JoinHandle<Vec<u8>>>) -> Option<Vec<u8>> {
+    handle.and_then(|handle| handle.join().ok())
 }
 
 fn is_local(reference: &FlakeRef) -> bool {
@@ -241,5 +343,51 @@ mod tests {
     fn update_all_rejects_empty_and_nixpkgs() {
         assert!(update_all("/tmp", &[]).is_err());
         assert!(update_all("/tmp", &["nixpkgs".to_string()]).is_err());
+    }
+
+    #[test]
+    fn reports_a_completed_command_with_its_output() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "printf ok"]);
+        let output = run_with_timeout(
+            command,
+            "test command",
+            Duration::from_secs(5),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"ok");
+    }
+
+    #[test]
+    fn kills_a_command_that_exceeds_the_deadline() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5"]);
+        let error = run_with_timeout(
+            command,
+            "test command",
+            Duration::from_millis(100),
+            &AtomicBool::new(false),
+        )
+        .unwrap_err();
+        assert!(error.contains("timed out"), "{error}");
+    }
+
+    #[test]
+    fn stops_a_command_when_cancelled() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5"]);
+        let cancel = AtomicBool::new(true);
+        let error =
+            run_with_timeout(command, "test command", Duration::from_secs(5), &cancel).unwrap_err();
+        assert!(error.contains("cancelled"), "{error}");
+    }
+
+    #[test]
+    fn check_with_rejects_a_preexisting_cancel() {
+        let cancel = AtomicBool::new(true);
+        let result = check_with("/tmp", &FlakeInput::new("foo"), CHECK_TIMEOUT, &cancel);
+        assert!(result.is_err());
     }
 }

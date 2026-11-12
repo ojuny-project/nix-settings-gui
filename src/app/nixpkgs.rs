@@ -38,8 +38,8 @@ pub(super) fn section(app: &Rc<App>, document: &InputDocument) -> adw::Preferenc
             let url = input.url.clone().unwrap_or_default();
             row.set_subtitle(if url.is_empty() { "No URL set" } else { &url });
             button.set_label("Configure");
-            let locked =
-                flake_lock::read_input(Path::new(&flake_file(app)), nixpkgs_model::INPUT_NAME);
+            let base = app.base.borrow().clone();
+            let locked = flake_lock::read_input_in(Path::new(&base), nixpkgs_model::INPUT_NAME);
             let pinned = adw::ActionRow::new();
             pinned.set_title("Pinned revision");
             match locked {
