@@ -54,7 +54,7 @@ impl AppConfig {
     }
 
     pub fn load() -> Self {
-        let mut config = std::fs::read_to_string(Self::path())
+        let mut config: Self = std::fs::read_to_string(Self::path())
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
