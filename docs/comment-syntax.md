@@ -154,14 +154,14 @@ while the feature is disabled. Home-manager backends should be added
 conditionally through `home-manager.sharedModules` and should read the enable
 flag from `osConfig`.
 
-### Annotated assignments must not be nested inside lists
+### Annotated assignments must not be nested inside lists or apply nodes
 
 `@option` binds to the assignment directly below it in the same attribute set.
 The scanner supports assignments in a plain attribute set. An annotation inside
-`lib.mkMerge [...]`, a list literal, `map`, `forEach` or `lib.optionalAttrs` is
-dropped, so the control is missing or renders without its label, group, order or
-gate. Change the module shape instead. The supported fix is to move the
-assignment into a plain attribute set or a `lib.mkIf`-wrapped attribute set.
+`lib.mkMerge [...]`, a list literal, `map`, `forEach`, `lib.optionalAttrs` or a
+`lib.mkIf` body is dropped, so the control is missing or renders without its
+label, group, order or gate. Change the module shape instead. The supported fix
+is to move the assignment into a plain attribute set.
 
 This fails:
 
@@ -194,12 +194,13 @@ config = lib.mkIf active {
 };
 ```
 
-`lib.mkIf` is supported. An annotation may sit directly inside a
-`lib.mkIf`-wrapped attribute set. Do not move options out of `lib.mkIf`.
+An annotation cannot bind inside a `lib.mkIf`-wrapped attribute set. Keep the
+annotated assignment in the plain set, as above. The `lib.mkIf` value can still
+gate other, unannotated assignments in that set.
 
 The rule applies to the annotated default as well as the option declaration.
-Keep both out of lists: declare options at the top level and put annotated
-defaults in a plain `config = { ... }` set or a `lib.mkIf`-wrapped set.
+Keep both out of lists and apply nodes: declare options at the top level and put
+annotated defaults in a plain `config = { ... }` set.
 
 ### Visibility dependencies
 

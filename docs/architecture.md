@@ -92,9 +92,9 @@ should read the enable flag from `osConfig` instead of redeclaring it.
 `@option` metadata has the same shape requirement. The scanner binds a comment to
 the next assignment in the same container and does not descend into a list of
 attribute sets. An annotation inside `lib.mkMerge [...]`, a list literal, `map`,
-`forEach` or `lib.optionalAttrs` is ignored. The fix belongs in the module: move
-the assignment into a plain attribute set or a `lib.mkIf`-wrapped attribute set
-and keep lists for gated install logic only.
+`forEach`, `lib.optionalAttrs` or a `lib.mkIf` body is ignored. The fix belongs
+in the module: move the assignment into a plain attribute set and keep lists and
+`lib.mkIf` bodies for unannotated gated logic only.
 
 ## 5. Widgets
 

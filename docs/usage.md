@@ -154,7 +154,8 @@ sets, or another config-level expression may not be enumerated, so its control
 can be missing or untyped. The `@option` annotation has the same restriction: the
 scanner does not descend into a list of attribute sets, so an annotation inside
 `lib.mkMerge`, a list literal, `map`, `forEach` or `lib.optionalAttrs` is
-dropped. Change the module shape instead. `lib.mkIf` is supported. The recommended module structure
+dropped. `lib.mkIf` bodies are not descended into either, so keep annotated
+assignments in a plain set. Change the module shape instead. The recommended module structure
 is described in `architecture.md`, section 4, "Option discovery and module
 shape", with examples in `comment-syntax.md`, section 2, "Options must exist in
 the option tree", and section "Annotated assignments must not be nested inside

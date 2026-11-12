@@ -1418,7 +1418,7 @@ pub(crate) fn detect(report: &serde_json::Value) -> HardwareDetection {
 }
 
 /// Every profile the widget can select, sorted for a stable dropdown.
-pub(crate) fn profile_choices() -> Vec<String> {
+pub fn profile_choices() -> Vec<String> {
     let mut names: Vec<String> = HARDWARE_PROFILES
         .iter()
         .map(|row| row.profile.to_string())
