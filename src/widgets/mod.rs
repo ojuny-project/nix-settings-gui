@@ -58,6 +58,7 @@ mod xcursor;
 pub(crate) use basic::{build_entry, build_spin, build_switch};
 pub use context::BuildContext;
 pub use dispatch::build;
+#[allow(unused_imports)]
 pub(crate) use context::{
     ApplyHook, ChangeHook, FileActions, IconActions, PackageSearch,
     PasswordPromptHook, PluginRegistryHook, PluginSettingsHook, SecureBootExec, SecureBootRebuild,
@@ -65,8 +66,11 @@ pub(crate) use context::{
 };
 pub(crate) use details::InfoDetails;
 pub use editor::Editor;
+#[allow(unused_imports)]
 pub(crate) use dispatch::is_package;
+#[allow(unused_imports)]
 #[cfg(feature = "ojuny-widgets")]
 pub(crate) use grid::is_dashboard_card_id;
+#[allow(unused_imports)]
 pub(crate) use nix::{attr_key, literal_for_widget};
 pub(crate) use submodule::{build_bespoke_child, hook_notify, scan_children};

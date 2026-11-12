@@ -683,15 +683,6 @@ pub(crate) fn is_group(key: &str) -> bool {
     group(key).is_some()
 }
 
-/// The disable key for a feature path: the group key for a child, otherwise the
-/// path itself.
-pub(crate) fn disable_key(path: &str) -> &str {
-    match path.split_once('.') {
-        Some((parent, _)) if is_group(parent) => parent,
-        _ => path,
-    }
-}
-
 pub(crate) fn default_for(path: &str) -> &'static str {
     find(path).map(|feature| feature.default).unwrap_or("null")
 }
@@ -834,8 +825,8 @@ mod tests {
 
     #[test]
     fn disable_keys_use_the_group_for_children() {
-        assert_eq!(disable_key("hdr.sdrEotf"), "hdr");
-        assert_eq!(disable_key("width"), "width");
-        assert_eq!(disable_key("background.image"), "background");
+        let disabled = DisabledSet::from_paths(&["hdr.sdrEotf".to_string()]).unwrap();
+        assert!(disabled.contains("hdr.sdrEotf"));
+        assert!(!disabled.contains("background.image"));
     }
 }

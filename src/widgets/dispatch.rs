@@ -184,6 +184,7 @@ fn package_binding(record: &Record, ctx: &BuildContext) -> Option<PackageBinding
 }
 
 /// Whether a record is annotated as a single package or a package list.
+#[allow(dead_code)]
 pub fn is_package(record: &Record) -> bool {
     matches!(
         record.spec.widget,

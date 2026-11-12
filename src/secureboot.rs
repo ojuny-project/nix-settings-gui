@@ -405,16 +405,6 @@ pub fn read_enrollment_marker() -> Option<String> {
         .filter(|text| !text.is_empty())
 }
 
-pub fn write_enrollment_marker() -> Result<(), String> {
-    let guid = local_guid().ok_or_else(|| "no local Secure Boot GUID".to_string())?;
-    let path = enrollment_marker_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
-    }
-    std::fs::write(&path, guid).map_err(|error| format!("cannot write {}: {error}", path.display()))
-}
-
 /// Shell command that records a successful enrollment. It is appended to the
 /// enrollment command so the marker is written only when `sbctl` succeeds.
 pub fn enrollment_marker_command() -> Result<String, String> {

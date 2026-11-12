@@ -92,6 +92,7 @@ impl InfoDetails {
         details
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_description(&self, text: &str) {
         self.description.set_text(text);
         self.sync();

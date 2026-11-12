@@ -104,6 +104,7 @@ pub(crate) fn package_items(entries: &[String]) -> String {
 /// Serialize a standalone package assignment. Bare names need `pkgs` in scope,
 /// so they go under `with pkgs;`; already-qualified expressions stay verbatim.
 /// Used when inserting a brand-new option, which has no wrapper of its own.
+#[allow(dead_code)]
 pub(crate) fn serialize_packages(entries: &[String]) -> String {
     let cleaned: Vec<String> = entries
         .iter()
@@ -249,6 +250,7 @@ pub(crate) fn attr_key(raw: &str) -> String {
 }
 /// Serialize a hand-entered value for a chosen widget kind. Used by the
 /// add-option flow to build the assignment it inserts.
+#[allow(dead_code)]
 pub fn literal_for_widget(widget: WidgetKind, value: &str) -> String {
     let t = value.trim();
     match widget {

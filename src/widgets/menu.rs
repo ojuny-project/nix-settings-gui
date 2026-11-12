@@ -602,7 +602,7 @@ pub(crate) fn make_menu_row(
             {
                 *open = None;
             }
-            popup.hide();
+            popup.set_visible(false);
         });
     }
     row

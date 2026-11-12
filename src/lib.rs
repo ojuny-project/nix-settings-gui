@@ -3,6 +3,11 @@
 //! This library exposes the scanner, model, metadata, flake input, and edit
 //! layers. The GTK application shell stays in the binary target.
 
+// GTK 4.10 deprecated the dialog and style-context APIs this shell still uses.
+// The binary target already allows them; keep the library target consistent so
+// the deprecation noise does not hide real warnings.
+#![allow(deprecated)]
+
 pub mod apply;
 pub mod descriptors;
 pub mod dsl;

@@ -555,23 +555,6 @@ fn show_message(parent: Option<&gtk::Window>, heading: &str, body: &str) {
     dialog.present();
 }
 
-fn run_captured(
-    ctx: &BuildContext,
-    commands: &[String],
-    log: &gtk::Label,
-    done: impl FnOnce(Result<String, String>) + 'static,
-) {
-    if commands.is_empty() {
-        log.set_text("There is no privileged action left for this step");
-        return;
-    }
-    let Some(exec) = ctx.secureboot_exec.clone() else {
-        log.set_text("Cannot run privileged commands");
-        return;
-    };
-    exec(commands.to_vec(), Box::new(done));
-}
-
 fn open_firmware_instructions(
     parent: &gtk::Dialog,
     ctx: &BuildContext,

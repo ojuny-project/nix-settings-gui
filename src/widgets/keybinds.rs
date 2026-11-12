@@ -30,6 +30,7 @@ pub(crate) struct KeybindRow {
     pub(crate) remove: gtk::Button,
     pub(crate) popup: gtk::Window,
     pub(crate) snapshot: Rc<RefCell<Option<PopoutSnapshot>>>,
+    #[allow(dead_code)]
     pub(crate) search_text: String,
 }
 /// Install the one-time stylesheet that paints the keybind preview pill.
@@ -295,7 +296,7 @@ pub(crate) fn make_keybind_row(scan_row: &scan::TableRowScan, ctx: &BuildContext
         let snapshot = row.snapshot.clone();
         apply.connect_clicked(move |_| {
             snapshot.borrow_mut().take();
-            popup.hide();
+            popup.set_visible(false);
         });
     }
     {

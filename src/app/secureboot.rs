@@ -110,15 +110,6 @@ pub(super) fn rebuild_hook(app: &Rc<App>) -> widgets::SecureBootRebuild {
     Rc::new(move || save::run_rebuild(&app))
 }
 
-fn has_tool(tool: &str) -> bool {
-    Command::new("sh")
-        .arg("-c")
-        .arg(format!("command -v {tool}"))
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-}
-
 fn run_privileged(app: &Rc<App>, commands: &[String]) -> Result<(), String> {
     if commands.is_empty() {
         return Ok(());

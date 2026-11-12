@@ -674,6 +674,7 @@ fn build_grid_popout(fields: &[GridField]) -> gtk::Popover {
 /// Build one on-canvas tile: parse the grid fields out of its value, keep every
 /// other field as a child editor, and wrap the surface in an overlay that
 /// carries the resize strips.
+#[allow(dead_code)]
 pub(crate) fn is_dashboard_card_id(id: &str) -> bool {
     DASH_GRID_REGISTRY.contains(&id)
 }

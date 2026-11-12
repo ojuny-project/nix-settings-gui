@@ -156,7 +156,7 @@ pub(crate) fn custom_entry(value: &str) -> ChoiceEntry {
     )
 }
 
-pub(crate) fn placeholder(text: &str, width: i32, height: i32) -> gtk::Widget {
+pub(crate) fn placeholder(text: &str, _width: i32, height: i32) -> gtk::Widget {
     let label = gtk::Label::builder()
         .label(text)
         .ellipsize(gtk::pango::EllipsizeMode::End)
