@@ -8,11 +8,25 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 fn installed_families() -> HashSet<String> {
-    pango::Context::default()
+    let mut families: HashSet<String> = pango::Context::default()
         .list_families()
         .into_iter()
         .map(|family| family.name().to_string())
-        .collect()
+        .collect();
+    if let Ok(output) = std::process::Command::new("fc-list")
+        .args(["-f", "%{family}\n"])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            for name in line.split(',') {
+                let name = name.trim();
+                if !name.is_empty() {
+                    families.insert(name.to_string());
+                }
+            }
+        }
+    }
+    families
 }
 
 fn styled_label(family: &str, size: i32, text: &str) -> gtk::Label {
