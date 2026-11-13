@@ -1,0 +1,13 @@
+# Tests
+# Local test record for this repository.
+# Run against commit f081f77 for the runtime tests and commit e447ee8 for the font detection change.
+# Device: ojuny test laptop, NixOS 26.11.20261111.d4f25a3, kernel 6.18.63.
+# Result: all listed tests passed.
+
+- PASS GUI-16: a second launch raises the existing window. Method: launch `nix-settings-gui` twice and count the `org.nix_settings_gui` windows; exactly one remains. Evidence: RUN-01, RUN-02.
+- PASS GUI-17: `--page` selects a visible page. Method: run `ojuny settings Development` and confirm the window switches to the Development page. Evidence: RUN-02.
+- PASS GUI-18: `--page` fallback is predictable. Method: launch without a page and confirm the default Flake Inputs page; a miss leaves the current page or falls back. Evidence: RUN-02.
+- PASS GUI-06: table cell edits save. Method: toggle the Rust language off, press Save, and check the module diff for `enable = false` plus `nix-instantiate --parse`. Evidence: RUN-02.
+- PASS NIX-08-R3: the update check reports per-input progress and results. Method: press `Check for updates`, capture the in-progress state, then the finished state showing `8 flake input update(s) available`. Evidence: RUN-01, `/tmp/opencode/nsg-check5.png`, `/tmp/opencode/nsg-check30.png`.
+- PASS NSG-INPUTS-01: the nixpkgs card reads the lock pin. Method: open Flake Inputs and confirm `Pinned revision d4f25a3`. Evidence: RUN-01.
+- PASS font detection fix: installed families are detected through fontconfig as well as Pango. Method: build the GUI with the `fc-list` fallback and pass the `ojuny-test-all.sh` gate. Evidence: RUN-03.
