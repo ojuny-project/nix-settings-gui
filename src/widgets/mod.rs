@@ -39,7 +39,7 @@ pub(crate) mod nix;
 mod popout;
 mod secureboot;
 mod secureboot_wizard;
-mod style_catalog;
+pub mod style_catalog;
 mod style_choice;
 mod submodule;
 mod table;

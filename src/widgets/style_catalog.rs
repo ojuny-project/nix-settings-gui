@@ -1,6 +1,6 @@
 use gtk::{gdk, glib, prelude::*};
 
-pub(crate) struct StyleEntry {
+pub struct StyleEntry {
     pub label: &'static str,
     pub value: &'static str,
     pub package: &'static str,
@@ -14,15 +14,15 @@ mod data {
     include!(concat!(env!("OUT_DIR"), "/style_catalog.rs"));
 }
 
-pub(crate) fn fonts() -> &'static [StyleEntry] {
+pub fn fonts() -> &'static [StyleEntry] {
     data::FONTS
 }
 
-pub(crate) fn icon_themes() -> &'static [StyleEntry] {
+pub fn icon_themes() -> &'static [StyleEntry] {
     data::ICON_THEMES
 }
 
-pub(crate) fn cursor_themes() -> &'static [StyleEntry] {
+pub fn cursor_themes() -> &'static [StyleEntry] {
     data::CURSOR_THEMES
 }
 
