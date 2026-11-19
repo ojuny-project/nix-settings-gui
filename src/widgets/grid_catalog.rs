@@ -113,17 +113,17 @@ pub(crate) fn profile_metadata() -> Vec<GridProfileData> {
     let mut profiles = Vec::new();
     #[cfg(feature = "ojuny-widgets")]
     {
-        if let Some(profile) = super::grid::GridProfile::for_path(
-            "programs.ojuny.dux.controlCenterWidgets",
-        ) {
+        if let Some(profile) =
+            super::grid::GridProfile::for_path("programs.ojuny.dux.controlCenterWidgets")
+        {
             profiles.push(profile_data(profile, "controlCenter", "Control Center"));
         }
         if let Some(profile) = super::grid::GridProfile::for_path("desktop.ojuny.dux.dashCards") {
             profiles.push(profile_data(profile, "dashboard", "Dashboard"));
         }
-        if let Some(profile) = super::grid::GridProfile::for_path(
-            "programs.ojuny.dux.weather.widgets",
-        ) {
+        if let Some(profile) =
+            super::grid::GridProfile::for_path("programs.ojuny.dux.weather.widgets")
+        {
             profiles.push(profile_data(profile, "weather", "Weather"));
         }
     }
@@ -135,7 +135,7 @@ pub(crate) fn profile_metadata() -> Vec<GridProfileData> {
     profiles
 }
 
-/// Default sizes for every card id the profiles know about, deduplicated.
+/// Default sizes for every card id the profiles know about.
 pub(crate) fn size_metadata() -> Vec<CardSize> {
     let mut sizes = Vec::new();
     for profile in profile_metadata() {
