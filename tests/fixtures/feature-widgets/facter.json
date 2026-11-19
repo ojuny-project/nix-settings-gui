@@ -1,0 +1,19 @@
+{
+  "smbios": {
+    "system": {
+      "manufacturer": "Example",
+      "product": "Fixture Laptop",
+      "version": "1.0"
+    }
+  },
+  "hardware": {
+    "graphics_card": [
+      {
+        "vendor": {
+          "name": "Intel Corporation",
+          "hex": "8086"
+        }
+      }
+    ]
+  }
+}

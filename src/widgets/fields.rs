@@ -102,6 +102,16 @@ pub(crate) fn field_has_content(editor: &Editor) -> bool {
         Editor::Spin(w) => w.value() != 0.0,
         Editor::Text(w) => !w.text().is_empty(),
         Editor::Path(w) => !w.text().is_empty(),
+        Editor::List { entries, .. } | Editor::ModuleList { entries, .. } => {
+            !entries.borrow().is_empty()
+        }
+        Editor::Multiline { view, .. } | Editor::Raw { view, .. } => {
+            let buffer = view.buffer();
+            !buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .trim()
+                .is_empty()
+        }
         _ => true,
     }
 }
@@ -207,6 +217,9 @@ pub(crate) fn editor_restore(editor: &Editor, value: &str) {
             if let Some(index) = choices.iter().position(|choice| choice == value) {
                 combo.set_selected(index as u32);
             }
+        }
+        Editor::Multiline { view, .. } | Editor::Raw { view, .. } => {
+            view.buffer().set_text(value);
         }
         _ => {}
     }

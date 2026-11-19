@@ -11,6 +11,71 @@ use gtk::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[derive(Clone, Debug)]
+pub(crate) struct ContainerSchema {
+    pub(crate) image: String,
+    pub(crate) ports: String,
+    pub(crate) volumes: String,
+    pub(crate) environment: String,
+    pub(crate) auto_start: String,
+    pub(crate) auto_start_default: bool,
+}
+
+impl Default for ContainerSchema {
+    fn default() -> Self {
+        Self {
+            image: "image".to_string(),
+            ports: "ports".to_string(),
+            volumes: "volumes".to_string(),
+            environment: "environment".to_string(),
+            auto_start: "autoStart".to_string(),
+            auto_start_default: true,
+        }
+    }
+}
+
+impl ContainerSchema {
+    pub(crate) fn from_spec(spec: &OptionSpec) -> Self {
+        let default = Self::default();
+        Self {
+            image: spec.container_image.clone().unwrap_or(default.image),
+            ports: spec.container_ports.clone().unwrap_or(default.ports),
+            volumes: spec.container_volumes.clone().unwrap_or(default.volumes),
+            environment: spec
+                .container_environment
+                .clone()
+                .unwrap_or(default.environment),
+            auto_start: spec
+                .container_auto_start
+                .clone()
+                .unwrap_or(default.auto_start),
+            auto_start_default: spec
+                .container_auto_start_default
+                .unwrap_or(default.auto_start_default),
+        }
+    }
+
+    fn has_auto_start(&self) -> bool {
+        !self.auto_start.trim().is_empty()
+    }
+
+    fn field_names(&self) -> Vec<&str> {
+        let mut names = Vec::new();
+        for name in [
+            &self.image,
+            &self.ports,
+            &self.volumes,
+            &self.environment,
+            &self.auto_start,
+        ] {
+            if !name.trim().is_empty() {
+                names.push(name.as_str());
+            }
+        }
+        names
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ContainerFields {
     pub name: String,
@@ -20,6 +85,11 @@ pub(crate) struct ContainerFields {
     pub environment: Vec<(String, String)>,
     pub auto_start: bool,
     pub extras: String,
+    pub image_present: bool,
+    pub ports_present: bool,
+    pub volumes_present: bool,
+    pub environment_present: bool,
+    pub auto_start_present: bool,
 }
 
 #[derive(Clone)]
@@ -41,38 +111,50 @@ pub(crate) struct DockerRow {
     pub(crate) remove: gtk::Button,
     pub(crate) expander: gtk::Expander,
     pub(crate) orig: ContainerFields,
+    pub(crate) schema: ContainerSchema,
 }
 
 impl DockerRow {
     fn read_fields(&self) -> ContainerFields {
+        let ports = list_values(&self.ports);
+        let volumes = list_values(&self.volumes);
+        let environment: Vec<(String, String)> = self
+            .environment
+            .borrow()
+            .iter()
+            .map(|row| {
+                (
+                    row.key.text().trim().to_string(),
+                    row.value.text().to_string(),
+                )
+            })
+            .filter(|(key, _)| !key.is_empty())
+            .collect();
+        let auto_start = self.auto_start.is_active();
         ContainerFields {
             name: self.key.text().trim().to_string(),
             image: self.image.text().to_string(),
-            ports: list_values(&self.ports),
-            volumes: list_values(&self.volumes),
-            environment: self
-                .environment
-                .borrow()
-                .iter()
-                .map(|row| {
-                    (
-                        row.key.text().trim().to_string(),
-                        row.value.text().to_string(),
-                    )
-                })
-                .filter(|(key, _)| !key.is_empty())
-                .collect(),
-            auto_start: self.auto_start.is_active(),
+            image_present: !self.image.text().trim().is_empty(),
+            ports_present: self.orig.ports_present || !ports.is_empty(),
+            volumes_present: self.orig.volumes_present || !volumes.is_empty(),
+            environment_present: self.orig.environment_present || !environment.is_empty(),
+            auto_start_present: self.orig.auto_start_present
+                || (self.schema.has_auto_start() && auto_start != self.schema.auto_start_default),
+            ports,
+            volumes,
+            environment,
+            auto_start,
             extras: text_of(&self.extras),
         }
     }
 }
 
 impl ContainerFields {
-    fn new(name: String) -> Self {
+    fn new(name: String, schema: &ContainerSchema) -> Self {
         Self {
             name,
-            auto_start: true,
+            auto_start: schema.auto_start_default,
+            auto_start_present: schema.has_auto_start(),
             ..Self::default()
         }
     }
@@ -110,18 +192,26 @@ fn dotted_key(segments: &[String]) -> String {
         .join(".")
 }
 
+#[allow(dead_code)]
 pub(crate) fn scan_containers(value_text: &str) -> Vec<ContainerFields> {
+    scan_containers_with(value_text, &ContainerSchema::default())
+}
+
+pub(crate) fn scan_containers_with(
+    value_text: &str,
+    schema: &ContainerSchema,
+) -> Vec<ContainerFields> {
     scan::scan_value_direct(value_text)
         .into_iter()
         .filter(|record| record.segments.len() == 1)
-        .map(|record| scan_container(&record.segments[0], &record.value))
+        .map(|record| scan_container(&record.segments[0], &record.value, schema))
         .collect()
 }
 
-fn scan_container(name: &str, value_text: &str) -> ContainerFields {
+fn scan_container(name: &str, value_text: &str, schema: &ContainerSchema) -> ContainerFields {
     let mut fields = ContainerFields {
         name: name.to_string(),
-        auto_start: true,
+        auto_start: schema.auto_start_default,
         ..ContainerFields::default()
     };
     if value::classify(value_text) != value::ValueKind::AttrSet {
@@ -129,17 +219,28 @@ fn scan_container(name: &str, value_text: &str) -> ContainerFields {
         return fields;
     }
     for record in scan::scan_value_direct(value_text) {
-        match record.segments.join(".").as_str() {
-            "image" => fields.image = entry_text(&record.value),
-            "ports" => fields.ports = parse_string_list(&record.value),
-            "volumes" => fields.volumes = parse_string_list(&record.value),
-            "environment" => fields.environment = scan_environment(&record.value),
-            "autoStart" => fields.auto_start = truthy(&record.value),
-            _ => fields.extras.push_str(&format!(
+        let key = record.segments.join(".");
+        if key == schema.image {
+            fields.image = entry_text(&record.value);
+            fields.image_present = true;
+        } else if key == schema.ports {
+            fields.ports = parse_string_list(&record.value);
+            fields.ports_present = true;
+        } else if key == schema.volumes {
+            fields.volumes = parse_string_list(&record.value);
+            fields.volumes_present = true;
+        } else if key == schema.environment {
+            fields.environment = scan_environment(&record.value);
+            fields.environment_present = true;
+        } else if key == schema.auto_start {
+            fields.auto_start = truthy(&record.value);
+            fields.auto_start_present = true;
+        } else {
+            fields.extras.push_str(&format!(
                 "{} = {}; ",
                 dotted_key(&record.segments),
                 record.value.trim()
-            )),
+            ));
         }
     }
     fields.extras = fields.extras.trim().to_string();
@@ -171,19 +272,58 @@ fn parse_string_list(value_text: &str) -> Vec<String> {
 }
 
 /// Render the whole editor back to a container attribute set.
+#[allow(dead_code)]
 pub(crate) fn serialize_containers(containers: &[ContainerFields]) -> String {
+    serialize_containers_with(containers, &ContainerSchema::default())
+}
+
+pub(crate) fn serialize_containers_with(
+    containers: &[ContainerFields],
+    schema: &ContainerSchema,
+) -> String {
     let mut entries = Vec::new();
     for container in containers {
-        let mut fields = vec![format!("image = {};", quote(&container.image))];
-        fields.push(format!("ports = {};", string_list(&container.ports)));
-        fields.push(format!("volumes = {};", string_list(&container.volumes)));
-        let environment: Vec<String> = container
-            .environment
-            .iter()
-            .map(|(key, value)| format!("{} = {};", attr_key(key), quote(value)))
-            .collect();
-        fields.push(format!("environment = {{ {} }};", environment.join(" ")));
-        fields.push(format!("autoStart = {};", container.auto_start));
+        let mut fields = Vec::new();
+        if !schema.image.trim().is_empty() && container.image_present {
+            fields.push(format!(
+                "{} = {};",
+                attr_key(&schema.image),
+                quote(&container.image)
+            ));
+        }
+        if !schema.ports.trim().is_empty() && container.ports_present {
+            fields.push(format!(
+                "{} = {};",
+                attr_key(&schema.ports),
+                string_list(&container.ports)
+            ));
+        }
+        if !schema.volumes.trim().is_empty() && container.volumes_present {
+            fields.push(format!(
+                "{} = {};",
+                attr_key(&schema.volumes),
+                string_list(&container.volumes)
+            ));
+        }
+        if !schema.environment.trim().is_empty() && container.environment_present {
+            let environment: Vec<String> = container
+                .environment
+                .iter()
+                .map(|(key, value)| format!("{} = {};", attr_key(key), quote(value)))
+                .collect();
+            fields.push(format!(
+                "{} = {{ {} }};",
+                attr_key(&schema.environment),
+                environment.join(" ")
+            ));
+        }
+        if schema.has_auto_start() && container.auto_start_present {
+            fields.push(format!(
+                "{} = {};",
+                attr_key(&schema.auto_start),
+                container.auto_start
+            ));
+        }
         let extras = container.extras.trim();
         if !extras.is_empty() {
             fields.push(extras.to_string());
@@ -201,9 +341,13 @@ pub(crate) fn docker_nix(editor: &Editor) -> String {
     let Editor::Docker { rows, .. } = editor else {
         return "{ }".to_string();
     };
-    let containers: Vec<ContainerFields> =
-        rows.borrow().iter().map(DockerRow::read_fields).collect();
-    serialize_containers(&containers)
+    let rows = rows.borrow();
+    let schema = rows
+        .first()
+        .map(|row| row.schema.clone())
+        .unwrap_or_default();
+    let containers: Vec<ContainerFields> = rows.iter().map(DockerRow::read_fields).collect();
+    serialize_containers_with(&containers, &schema)
 }
 
 pub(crate) fn docker_unchanged(rows: &Rc<RefCell<Vec<DockerRow>>>, orig_count: usize) -> bool {
@@ -211,16 +355,23 @@ pub(crate) fn docker_unchanged(rows: &Rc<RefCell<Vec<DockerRow>>>, orig_count: u
     rows.len() == orig_count && rows.iter().all(|row| row.read_fields() == row.orig)
 }
 
-/// Build the container list editor. Every container is an expander with its
-/// image, port, volume, environment, and auto-start fields.
+/// Build the container list editor. Every container is an expander with the
+/// configured image, port, volume, environment, and auto-start fields.
 pub(crate) fn build_docker(record: &Record) -> Editor {
+    let schema = ContainerSchema::from_spec(&record.spec);
     let root = gtk::Box::new(gtk::Orientation::Vertical, 8);
     root.set_hexpand(true);
 
+    let fields_text = schema.field_names().join(", ");
+    let hint_text = if fields_text.is_empty() {
+        "Manage the declarative containers.".to_string()
+    } else {
+        format!("Manage the declarative containers. Each container writes {fields_text}.")
+    };
     let hint = gtk::Label::builder()
         .xalign(0.0)
         .wrap(true)
-        .label("Manage the declarative containers. Each container writes image, ports, volumes, environment, and autoStart.")
+        .label(&hint_text)
         .css_classes(["dim-label", "caption"])
         .build();
     root.append(&hint);
@@ -233,10 +384,10 @@ pub(crate) fn build_docker(record: &Record) -> Editor {
     let on_change: ChangeHook = Rc::new(RefCell::new(None));
     let notify = super::submodule::hook_notify(&on_change);
 
-    let scans = scan_containers(&record.value);
+    let scans = scan_containers_with(&record.value, &schema);
     let orig_count = scans.len();
     for scan in scans {
-        let row = make_docker_row(scan, &rows_box, &rows, &notify);
+        let row = make_docker_row(scan, &schema, &rows_box, &rows, &notify);
         rows_box.append(&row.expander);
         rows.borrow_mut().push(row);
     }
@@ -247,9 +398,16 @@ pub(crate) fn build_docker(record: &Record) -> Editor {
         let rows_box = rows_box.clone();
         let rows = rows.clone();
         let notify = notify.clone();
+        let schema = schema.clone();
         add.connect_clicked(move |_| {
             let name = unique_container_name(&rows.borrow());
-            let row = make_docker_row(ContainerFields::new(name), &rows_box, &rows, &notify);
+            let row = make_docker_row(
+                ContainerFields::new(name, &schema),
+                &schema,
+                &rows_box,
+                &rows,
+                &notify,
+            );
             rows_box.append(&row.expander);
             rows.borrow_mut().push(row);
             notify();
@@ -286,6 +444,7 @@ fn unique_container_name(rows: &[DockerRow]) -> String {
 
 fn make_docker_row(
     fields: ContainerFields,
+    schema: &ContainerSchema,
     rows_box: &gtk::Box,
     rows: &Rc<RefCell<Vec<DockerRow>>>,
     notify: &Rc<dyn Fn()>,
@@ -322,15 +481,21 @@ fn make_docker_row(
     let image = gtk::Entry::new();
     image.set_text(&fields.image);
     image.set_hexpand(true);
-    content.append(&field_block("Image", &image));
+    if !schema.image.trim().is_empty() {
+        content.append(&field_block("Image", &image));
+    }
 
     let ports = build_list(&string_list(&fields.ports), false, None);
     ports.connect_changed(notify);
-    content.append(&field_block("Ports", &ports.root()));
+    if !schema.ports.trim().is_empty() {
+        content.append(&field_block("Ports", &ports.root()));
+    }
 
     let volumes = build_list(&string_list(&fields.volumes), false, None);
     volumes.connect_changed(notify);
-    content.append(&field_block("Volumes", &volumes.root()));
+    if !schema.volumes.trim().is_empty() {
+        content.append(&field_block("Volumes", &volumes.root()));
+    }
 
     let environment: Rc<RefCell<Vec<EnvRow>>> = Rc::new(RefCell::new(Vec::new()));
     let environment_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
@@ -353,12 +518,16 @@ fn make_docker_row(
         });
     }
     environment_box.append(&add_environment);
-    content.append(&field_block("Environment", &environment_box));
+    if !schema.environment.trim().is_empty() {
+        content.append(&field_block("Environment", &environment_box));
+    }
 
     let auto_start = gtk::Switch::new();
     auto_start.set_active(fields.auto_start);
     auto_start.set_halign(gtk::Align::Start);
-    content.append(&field_block("Start at boot", &auto_start));
+    if schema.has_auto_start() {
+        content.append(&field_block("Start at boot", &auto_start));
+    }
 
     let (extras, extras_root) = build_raw(
         &fields.extras,
@@ -382,6 +551,7 @@ fn make_docker_row(
         remove,
         expander,
         orig,
+        schema: schema.clone(),
     };
     connect_docker_row(&row, notify);
 
@@ -441,9 +611,9 @@ fn env_row(
 }
 
 fn connect_docker_row(row: &DockerRow, notify: &Rc<dyn Fn()>) {
-    for entry in [&row.image] {
+    {
         let notify = notify.clone();
-        entry.connect_changed(move |_| notify());
+        row.image.connect_changed(move |_| notify());
     }
     {
         let notify = notify.clone();
@@ -523,5 +693,38 @@ mod tests {
         assert!(containers[0].extras.contains("user = \"1000:1000\";"));
         let nix = serialize_containers(&containers);
         assert!(nix.contains("user = \"1000:1000\";"));
+    }
+
+    #[test]
+    fn keeps_absent_fields_absent() {
+        let containers = scan_containers("{ web = { image = \"nginx\"; }; }");
+        let nix = serialize_containers(&containers);
+        assert!(nix.contains("image = \"nginx\";"));
+        assert!(!nix.contains("ports ="));
+        assert!(!nix.contains("volumes ="));
+        assert!(!nix.contains("environment ="));
+        assert!(!nix.contains("autoStart ="));
+    }
+
+    #[test]
+    fn supports_custom_field_names() {
+        let schema = ContainerSchema {
+            image: "image".into(),
+            ports: "publishedPorts".into(),
+            volumes: "mounts".into(),
+            environment: "env".into(),
+            auto_start: "enabled".into(),
+            auto_start_default: false,
+        };
+        let text = "{ web = { image = \"nginx\"; publishedPorts = [ \"8080:80\" ]; env = { A = \"b\"; }; enabled = true; }; }";
+        let containers = scan_containers_with(text, &schema);
+        assert_eq!(containers[0].ports, vec!["8080:80"]);
+        assert!(containers[0].auto_start);
+        let nix = serialize_containers_with(&containers, &schema);
+        assert!(nix.contains("publishedPorts = [ \"8080:80\" ];"));
+        assert!(nix.contains("env = { A = \"b\"; };"));
+        assert!(nix.contains("enabled = true;"));
+        let round_trip = scan_containers_with(&nix, &schema);
+        assert_eq!(round_trip, containers);
     }
 }

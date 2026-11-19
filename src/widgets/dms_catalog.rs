@@ -1,21 +1,4 @@
-/// Card surfaces whose DMS defaults differ, and the default geometry the
-/// editor uses when a card is added.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GridSurface {
-    ControlCenter,
-    Dashboard,
-    Weather,
-    Generic,
-}
-
-pub(crate) struct CardSize {
-    pub(crate) w: i64,
-    pub(crate) h: i64,
-    pub(crate) min_w: i64,
-    pub(crate) min_h: i64,
-    pub(crate) max_w: i64,
-    pub(crate) max_h: i64,
-}
+use super::grid_catalog::{CardSize, GridSurface};
 
 fn size(w: i64, h: i64) -> CardSize {
     CardSize {

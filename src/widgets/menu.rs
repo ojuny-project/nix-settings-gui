@@ -135,8 +135,6 @@ impl MenuPopout {
         let values = capture_field_values(&self.fields.borrow());
         *self.snapshot.borrow_mut() = Some(PopoutSnapshot {
             name: String::new(),
-            modifier: String::new(),
-            keys: String::new(),
             fields: values,
             invalid_provider: self.invalid_provider.borrow().clone(),
         });

@@ -178,7 +178,7 @@ fn plugin_registry_hook(app: &Rc<App>) -> widgets::PluginRegistryHook {
 /// thread so the `nix eval` never blocks the main loop.
 fn wallpaper_set_hook(app: &Rc<App>) -> widgets::WallpaperSetHook {
     let app = app.clone();
-    Rc::new(move |done| {
+    Rc::new(move |request, done| {
         let base = app.base.borrow().clone();
         let target = {
             let raw = app.target.borrow().clone();
@@ -187,7 +187,12 @@ fn wallpaper_set_hook(app: &Rc<App>) -> widgets::WallpaperSetHook {
                 _ => raw,
             }
         };
-        let key = format!("{base}\u{0}{target}\u{0}{}", app.wallpaper_generation.get());
+        let preset_option = request.preset_option.clone().unwrap_or_default();
+        let preset_source = request.preset_source.clone().unwrap_or_default();
+        let key = format!(
+            "{base}\u{0}{target}\u{0}{preset_option}\u{0}{preset_source}\u{0}{}",
+            app.wallpaper_generation.get()
+        );
         if let Some((cached_key, cached)) = app.wallpaper_set.borrow().clone() {
             if cached_key == key {
                 done(cached);
@@ -205,7 +210,8 @@ fn wallpaper_set_hook(app: &Rc<App>) -> widgets::WallpaperSetHook {
         let worker_key = key.clone();
         std::thread::spawn(move || {
             let started = crate::timing::start();
-            let result = crate::metadata::wallpaper_set(&base, &target);
+            let result =
+                crate::metadata::wallpaper_set(&base, &target, &preset_option, &preset_source);
             crate::timing::report("wallpaper_set", started);
             let _ = tx.send_blocking(Msg::WallpaperSet {
                 key: worker_key,

@@ -435,6 +435,35 @@ pub struct OptionSpec {
     pub horizontal: bool,
     pub key_editable: bool,
     pub first_value_editable: bool,
+    /// Ordered fields shown by the `keybinds` widget. Defaults to the
+    /// modifier/keys/dispatcher shape.
+    pub bind_fields: Option<Vec<String>>,
+    /// Per-field editor hints for `bindFields`: bool, int, float, str, list.
+    pub bind_field_types: Option<Vec<String>>,
+    /// Fields shown in the row preview, in order.
+    pub bind_preview: Option<Vec<String>>,
+    /// Fields used to sort rows. Empty keeps source order.
+    pub bind_sort: Option<Vec<String>>,
+    /// Field used as the display name for list-shaped bind sets.
+    pub bind_key_field: Option<String>,
+    /// Container field names for the `docker` widget.
+    pub container_image: Option<String>,
+    pub container_ports: Option<String>,
+    pub container_volumes: Option<String>,
+    pub container_environment: Option<String>,
+    pub container_auto_start: Option<String>,
+    /// Initial `autoStart` value for a newly added container.
+    pub container_auto_start_default: Option<bool>,
+    /// Hardware report JSON path for the `facter` widget, relative to the
+    /// configuration root. Defaults to the standard facter.json search.
+    pub report_path: Option<String>,
+    /// Profile catalog JSON path for the `facter` widget, relative to the
+    /// configuration root. Defaults to the builtin catalog.
+    pub profile_catalog: Option<String>,
+    /// Card ids offered by a generic `grid-configuration` picker.
+    pub grid_registry: Option<Vec<String>>,
+    /// Whether a generic `grid-configuration` writes an `enabled` field.
+    pub grid_enabled: bool,
     pub advanced: bool,
     pub hidden: bool,
     pub readonly: bool,
@@ -450,6 +479,9 @@ pub struct OptionSpec {
     /// `ojuny-desktop`. When set, the wallpaper picker lists those presets in
     /// addition to the images in `wallpaperDir`.
     pub preset_source: Option<String>,
+    /// Dotted option path inside the target configuration that holds the
+    /// generated wallpaper set, for example `desktop.ojuny.wallpaper`.
+    pub preset_option: Option<String>,
     /// Directory holding selectable files for the `file` widget, relative to
     /// the file containing the option. Defaults to `./files`.
     pub file_dir: Option<String>,
@@ -501,6 +533,21 @@ impl OptionSpec {
             horizontal: d.bool("horizontal").unwrap_or(false),
             key_editable: d.bool("keyEditable").unwrap_or(false),
             first_value_editable: d.bool("firstValueEditable").unwrap_or(false),
+            bind_fields: d.strings("bindFields"),
+            bind_field_types: d.strings("bindFieldTypes"),
+            bind_preview: d.strings("bindPreview"),
+            bind_sort: d.strings("bindSort"),
+            bind_key_field: d.string("bindKeyField"),
+            container_image: d.string("imageField"),
+            container_ports: d.string("portsField"),
+            container_volumes: d.string("volumesField"),
+            container_environment: d.string("environmentField"),
+            container_auto_start: d.string("autoStartField"),
+            container_auto_start_default: d.bool("autoStartDefault"),
+            report_path: d.string("reportPath"),
+            profile_catalog: d.string("profileCatalog"),
+            grid_registry: d.strings("gridRegistry"),
+            grid_enabled: d.bool("gridEnabled").unwrap_or(false),
             advanced: d.bool("advanced").unwrap_or(false),
             hidden: d.bool("hidden").unwrap_or(false),
             readonly: d.bool("readonly").unwrap_or(false),
@@ -511,6 +558,7 @@ impl OptionSpec {
             visible_when: parse_visibility(d),
             wallpaper_dir: d.string("wallpaperDir"),
             preset_source: d.string("presetSource"),
+            preset_option: d.string("presetOption"),
             file_dir: d.string("fileDir"),
             file_extensions: d.strings("fileExtensions"),
             icon_dir: d.string("iconDir"),
@@ -702,12 +750,58 @@ mod tests {
     }
 
     #[test]
+    fn parses_generic_widget_directives() {
+        let text = "/* @option widget = \"keybinds\"; bindFields = [ \"key\" \"command\" ]; bindFieldTypes = [ \"list\" \"str\" ]; bindPreview = [ \"key\" ]; bindSort = [ \"command\" ]; bindKeyField = \"command\"; */";
+        let (_, d) = parse_comment(text).unwrap();
+        let opt = OptionSpec::from_directives(&d);
+        assert_eq!(
+            opt.bind_fields,
+            Some(vec!["key".to_string(), "command".to_string()])
+        );
+        assert_eq!(
+            opt.bind_field_types,
+            Some(vec!["list".to_string(), "str".to_string()])
+        );
+        assert_eq!(opt.bind_preview, Some(vec!["key".to_string()]));
+        assert_eq!(opt.bind_sort, Some(vec!["command".to_string()]));
+        assert_eq!(opt.bind_key_field.as_deref(), Some("command"));
+
+        let text = "/* @option widget = \"docker\"; imageField = \"image\"; portsField = \"publishedPorts\"; autoStartDefault = false; */";
+        let (_, d) = parse_comment(text).unwrap();
+        let opt = OptionSpec::from_directives(&d);
+        assert_eq!(opt.container_ports.as_deref(), Some("publishedPorts"));
+        assert_eq!(opt.container_auto_start_default, Some(false));
+
+        let text = "/* @option widget = \"facter\"; reportPath = \"modules/facter.json\"; profileCatalog = \"modules/profiles.json\"; */";
+        let (_, d) = parse_comment(text).unwrap();
+        let opt = OptionSpec::from_directives(&d);
+        assert_eq!(opt.report_path.as_deref(), Some("modules/facter.json"));
+        assert_eq!(
+            opt.profile_catalog.as_deref(),
+            Some("modules/profiles.json")
+        );
+
+        let text = "/* @option widget = \"grid-configuration\"; gridRegistry = [ \"clock\" \"weather\" ]; gridEnabled = true; */";
+        let (_, d) = parse_comment(text).unwrap();
+        let opt = OptionSpec::from_directives(&d);
+        assert_eq!(
+            opt.grid_registry,
+            Some(vec!["clock".to_string(), "weather".to_string()])
+        );
+        assert!(opt.grid_enabled);
+    }
+
+    #[test]
     fn parses_preset_source() {
-        let text = "/* @option widget = \"wallpaper\"; presetSource = \"ojuny-desktop\"; */";
+        let text = "/* @option widget = \"wallpaper\"; presetSource = \"ojuny-desktop\"; presetOption = \"desktop.ojuny.wallpaper\"; */";
         let (kind, d) = parse_comment(text).unwrap();
         assert_eq!(kind, MarkerKind::Option);
         let opt = OptionSpec::from_directives(&d);
         assert_eq!(opt.preset_source.as_deref(), Some("ojuny-desktop"));
+        assert_eq!(
+            opt.preset_option.as_deref(),
+            Some("desktop.ojuny.wallpaper")
+        );
     }
 
     #[test]

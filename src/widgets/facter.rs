@@ -44,10 +44,20 @@ fn find_reports(dir: &Path, found: &mut Vec<PathBuf>) {
 }
 
 pub(crate) fn build_facter(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> Editor {
+    let (catalog, catalog_error) = match &record.spec.profile_catalog {
+        Some(path) => {
+            let resolved = resolve_from_base(&ctx.base, path);
+            match facter_detect::ProfileCatalog::load(&resolved) {
+                Ok(catalog) => (catalog, None),
+                Err(error) => (facter_detect::ProfileCatalog::builtin(), Some(error)),
+            }
+        }
+        None => (facter_detect::ProfileCatalog::builtin(), None),
+    };
     let mut choices = resolve_choices(&record.spec, type_str);
     if choices.is_empty() {
         choices.push("auto".to_string());
-        choices.extend(facter_detect::profile_choices());
+        choices.extend(facter_detect::profile_choices(&catalog));
     }
     let value_text = unwrap_modifiers(&record.value);
     let editor = build_dropdown(&choices, &value_text);
@@ -57,10 +67,13 @@ pub(crate) fn build_facter(record: &Record, type_str: Option<&str>, ctx: &BuildC
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
     root.set_hexpand(true);
-    let path = report_path(&ctx.base);
+    let path = match &record.spec.report_path {
+        Some(path) => resolve_from_base(&ctx.base, path),
+        None => report_path(&ctx.base),
+    };
     let report = std::fs::read_to_string(&path)
         .ok()
-        .and_then(|text| facter_detect::detect_report(&text));
+        .and_then(|text| facter_detect::detect_report(&text, &catalog));
     let present = report.is_some();
     let detection = report.unwrap_or_else(HardwareDetection::empty);
 
@@ -69,12 +82,21 @@ pub(crate) fn build_facter(record: &Record, type_str: Option<&str>, ctx: &BuildC
             .xalign(0.0)
             .wrap(true)
             .label(format!(
-                "No hardware report at {}. Run nix run .#regenerate-hardware -- --profile-only, or choose a profile manually.",
+                "No hardware report at {}. Choose a profile manually.",
                 path.display()
             ))
             .css_classes(["dim-label", "caption"])
             .build();
         root.append(&empty);
+    }
+    if let Some(error) = catalog_error {
+        let label = gtk::Label::builder()
+            .xalign(0.0)
+            .wrap(true)
+            .label(format!("Using the builtin profile catalog. {error}"))
+            .css_classes(["dim-label", "caption"])
+            .build();
+        root.append(&label);
     }
 
     let grid = gtk::Grid::new();
@@ -106,7 +128,7 @@ pub(crate) fn build_facter(record: &Record, type_str: Option<&str>, ctx: &BuildC
                 .get(combo.selected() as usize)
                 .map(|choice| parse_string_literal(choice))
                 .unwrap_or_else(|| "auto".to_string());
-            let (_, gpu) = facter_detect::effective(&selected, &detection);
+            let (_, gpu) = facter_detect::effective(&selected, &detection, &catalog);
             gpu_label.set_text(&gpu.layout);
             source_label.set_text(&gpu.source);
             managed_label.set_text(if gpu.managed { "Yes" } else { "No" });
@@ -122,6 +144,15 @@ pub(crate) fn build_facter(record: &Record, type_str: Option<&str>, ctx: &BuildC
         root,
         combo,
         choices,
+    }
+}
+
+fn resolve_from_base(base: &str, path: &str) -> PathBuf {
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        normalize_path(Path::new(base)).join(candidate)
     }
 }
 
@@ -156,14 +187,15 @@ mod tests {
 
     #[test]
     fn finds_an_existing_report_in_a_nested_module_tree() {
-        let root = std::env::temp_dir().join(format!(
-            "nix-settings-gui-facter-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nix-settings-gui-facter-{}", std::process::id()));
         let nested = root.join("modules/07-system");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::write(nested.join("facter.json"), "{}").unwrap();
-        assert_eq!(report_path(root.to_str().unwrap()), nested.join("facter.json"));
+        assert_eq!(
+            report_path(root.to_str().unwrap()),
+            nested.join("facter.json")
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

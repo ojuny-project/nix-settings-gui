@@ -65,6 +65,31 @@
     };
   };
 
+  /* @option widget = "keybinds"; label = "Generic binds"; bindFields = [ "key" "command" "repeat" ]; bindFieldTypes = [ "list" "str" "bool" ]; bindPreview = [ "key" ]; bindSort = [ "command" ]; */
+  features.genericBinds = [
+    { key = [ "SUPER" "r" ]; command = "reload"; repeat = false; extra = "kept"; }
+  ];
+
+  /* @option widget = "docker"; label = "Containers"; imageField = "image"; portsField = "publishedPorts"; volumesField = "mounts"; environmentField = "env"; autoStartField = "enabled"; autoStartDefault = false; */
+  features.containers = {
+    web = {
+      image = "nginx:latest";
+      publishedPorts = [ "127.0.0.1:8080:80" ];
+      mounts = [ "html:/usr/share/nginx/html" ];
+      env = { TZ = "Europe/Amsterdam"; };
+      enabled = true;
+    };
+  };
+
+  /* @option widget = "facter"; label = "Hardware profile"; reportPath = "tests/fixtures/feature-widgets/facter.json"; profileCatalog = "tests/fixtures/feature-widgets/profiles.json"; */
+  features.hardwareProfile = "auto";
+
+  /* @option widget = "grid-configuration"; label = "Generic grid"; gridColumns = 4; gridRegistry = [ "clock" "weather" ]; gridEnabled = true; */
+  features.genericGrid = {
+    clock = { col = 0; row = 0; w = 2; h = 1; enabled = true; customField = "kept"; };
+    weather = { col = 2; row = 0; w = 2; h = 1; };
+  };
+
   /* @option widget = "monitors"; label = "Monitors"; */
   features.monitor_rule = [
     { name = "eDP-1"; width = 1920; height = 1080; refresh = 60.0; x = 0; y = 0; scale = 1.0; }

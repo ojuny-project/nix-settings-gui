@@ -221,14 +221,21 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
         view.scrolled.add_controller(scroll);
     }
 
-    if record.spec.preset_source.is_some() {
+    if record.spec.preset_source.is_some() || record.spec.preset_option.is_some() {
         if let Some(fetch) = ctx.wallpaper_set.clone() {
             let view = view.clone();
-            fetch(Box::new(move |result| {
-                if let Ok(set) = result {
-                    view.set_presets(set);
-                }
-            }));
+            let request = super::context::WallpaperRequest {
+                preset_source: record.spec.preset_source.clone(),
+                preset_option: record.spec.preset_option.clone(),
+            };
+            fetch(
+                request,
+                Box::new(move |result| {
+                    if let Ok(set) = result {
+                        view.set_presets(set);
+                    }
+                }),
+            );
         }
     }
 

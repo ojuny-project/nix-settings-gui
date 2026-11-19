@@ -7,7 +7,6 @@ mod details;
 mod dispatch;
 #[cfg(feature = "ojuny-widgets")]
 mod dms_catalog;
-#[cfg(feature = "ojuny-widgets")]
 mod docker;
 mod editor;
 mod facter;
@@ -15,13 +14,10 @@ pub mod facter_detect;
 mod fields;
 mod file;
 mod font;
-#[cfg(feature = "ojuny-widgets")]
 mod grid;
-#[cfg(feature = "ojuny-widgets")]
+mod grid_catalog;
 mod grid_details;
-#[cfg(feature = "ojuny-widgets")]
 mod grid_gestures;
-#[cfg(feature = "ojuny-widgets")]
 mod grid_layout;
 mod icon;
 mod icon_theme;
@@ -57,17 +53,17 @@ mod xcursor;
 
 pub(crate) use basic::{build_entry, build_spin, build_switch};
 pub use context::BuildContext;
-pub use dispatch::build;
 #[allow(unused_imports)]
 pub(crate) use context::{
-    ApplyHook, ChangeHook, FileActions, IconActions, PackageSearch,
-    PasswordPromptHook, PluginRegistryHook, PluginSettingsHook, SecureBootExec, SecureBootRebuild,
-    SecureBootRun, SecureBootStatus, SecureBootWrite, WallpaperActions, WallpaperSetHook,
+    ApplyHook, ChangeHook, FileActions, IconActions, PackageSearch, PasswordPromptHook,
+    PluginRegistryHook, PluginSettingsHook, SecureBootExec, SecureBootRebuild, SecureBootRun,
+    SecureBootStatus, SecureBootWrite, WallpaperActions, WallpaperRequest, WallpaperSetHook,
 };
 pub(crate) use details::InfoDetails;
-pub use editor::Editor;
+pub use dispatch::build;
 #[allow(unused_imports)]
 pub(crate) use dispatch::is_package;
+pub use editor::Editor;
 #[allow(unused_imports)]
 #[cfg(feature = "ojuny-widgets")]
 pub(crate) use grid::is_dashboard_card_id;

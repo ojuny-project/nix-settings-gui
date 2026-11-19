@@ -1,7 +1,7 @@
 use super::context::{BuildContext, ChangeHook};
-use super::dms_catalog::{card_defaults, widget_description, widget_icon, GridSurface};
 use super::editor::Editor;
 use super::fields::dim_line_with_help;
+use super::grid_catalog::{card_defaults, widget_description, widget_icon, GridSurface};
 use super::grid_details::{
     grid_clear_all, grid_refresh_adder, grid_refresh_details, grid_reset_layout,
 };
@@ -60,15 +60,24 @@ pub(crate) struct GridTile {
 }
 
 /// The per-page shape of a grid control, derived from the record path.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct GridProfile {
     pub(crate) surface: GridSurface,
     pub(crate) columns: i64,
     pub(crate) max_rows: i64,
     pub(crate) has_enabled: bool,
-    pub(crate) registry: &'static [&'static str],
+    pub(crate) registry: Rc<[String]>,
 }
 
+fn registry(items: &[&str]) -> Rc<[String]> {
+    items
+        .iter()
+        .map(|item| item.to_string())
+        .collect::<Vec<_>>()
+        .into()
+}
+
+#[cfg(feature = "ojuny-widgets")]
 pub(crate) const CC_GRID_REGISTRY: &[&str] = &[
     "user",
     "battery",
@@ -96,6 +105,7 @@ pub(crate) const CC_GRID_REGISTRY: &[&str] = &[
     "quickTiles",
     "plugin_dankKDEConnect",
 ];
+#[cfg(feature = "ojuny-widgets")]
 pub(crate) const DASH_GRID_REGISTRY: &[&str] = &[
     "clock",
     "weather",
@@ -111,6 +121,7 @@ pub(crate) const DASH_GRID_REGISTRY: &[&str] = &[
     "user",
     "wellbeing",
 ];
+#[cfg(feature = "ojuny-widgets")]
 pub(crate) const WEATHER_GRID_REGISTRY: &[&str] = &[
     "conditions",
     "hourly",
@@ -126,6 +137,7 @@ pub(crate) const WEATHER_GRID_REGISTRY: &[&str] = &[
 ];
 
 impl GridProfile {
+    #[cfg(feature = "ojuny-widgets")]
     pub(crate) fn for_path(path: &str) -> Option<Self> {
         let path = crate::model::normalize_namespace(path);
         if path.contains("controlCenterWidgets") {
@@ -134,7 +146,7 @@ impl GridProfile {
                 columns: 8,
                 max_rows: 64,
                 has_enabled: true,
-                registry: CC_GRID_REGISTRY,
+                registry: registry(CC_GRID_REGISTRY),
             })
         } else if path.contains("dashCards") {
             Some(Self {
@@ -142,7 +154,7 @@ impl GridProfile {
                 columns: 6,
                 max_rows: 64,
                 has_enabled: false,
-                registry: DASH_GRID_REGISTRY,
+                registry: registry(DASH_GRID_REGISTRY),
             })
         } else if path.contains("weather.widgets") {
             Some(Self {
@@ -150,11 +162,16 @@ impl GridProfile {
                 columns: 4,
                 max_rows: 64,
                 has_enabled: false,
-                registry: WEATHER_GRID_REGISTRY,
+                registry: registry(WEATHER_GRID_REGISTRY),
             })
         } else {
             None
         }
+    }
+
+    #[cfg(not(feature = "ojuny-widgets"))]
+    pub(crate) fn for_path(_path: &str) -> Option<Self> {
+        None
     }
 
     pub(crate) fn generic() -> Self {
@@ -163,7 +180,7 @@ impl GridProfile {
             columns: 6,
             max_rows: 64,
             has_enabled: false,
-            registry: &[],
+            registry: registry(&[]),
         }
     }
 }
@@ -196,28 +213,34 @@ pub(crate) struct GridLayoutState {
 }
 pub(crate) fn build_grid_configuration(record: &Record, ctx: &BuildContext) -> Editor {
     install_grid_css();
-    let profile = GridProfile::for_path(&record.path()).unwrap_or_else(GridProfile::generic);
+    let base = GridProfile::for_path(&record.path()).unwrap_or_else(GridProfile::generic);
+    let registry = match record.spec.grid_registry.as_ref() {
+        Some(ids) if !ids.is_empty() => ids.clone().into(),
+        _ => base.registry.clone(),
+    };
     let profile = GridProfile {
         columns: record
             .spec
             .grid_columns
             .map(|n| n.max(1))
-            .unwrap_or(profile.columns),
-        ..profile
+            .unwrap_or(base.columns),
+        has_enabled: base.has_enabled || record.spec.grid_enabled,
+        registry,
+        ..base
     };
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 8);
     root.set_hexpand(true);
     let on_change: ChangeHook = Rc::new(RefCell::new(None));
     let canvas = gtk::Grid::new();
-    canvas.add_css_class("dms-card-canvas");
+    canvas.add_css_class("grid-card-canvas");
     canvas.set_column_homogeneous(true);
     canvas.set_row_homogeneous(true);
     canvas.set_column_spacing(GRID_GAP as u32);
     canvas.set_row_spacing(GRID_GAP as u32);
     canvas.set_hexpand(true);
     let drop_preview = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    drop_preview.add_css_class("dms-drop-preview");
+    drop_preview.add_css_class("grid-drop-preview");
     drop_preview.set_can_target(false);
     drop_preview.set_visible(false);
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -246,7 +269,7 @@ pub(crate) fn build_grid_configuration(record: &Record, ctx: &BuildContext) -> E
         if value::classify(&child.value) == value::ValueKind::AttrSet {
             let id = child.segments.last().cloned().unwrap_or_default();
             orig_ids.push(id.clone());
-            built.push(make_grid_tile(&id, &child.value, profile, ctx));
+            built.push(make_grid_tile(&id, &child.value, profile.clone(), ctx));
         } else {
             extras.push(child);
         }
@@ -395,7 +418,7 @@ pub(crate) fn grid_tile_instance_id(tile: &GridTile) -> Option<String> {
 }
 
 pub(crate) fn grid_tile_is_quick_tiles(tile: &GridTile) -> bool {
-    tile.id == QUICK_TILES_ID
+    cfg!(feature = "ojuny-widgets") && tile.id == QUICK_TILES_ID
 }
 
 /// A group member is only hidden when its parent quick-tiles instance exists.
@@ -442,6 +465,9 @@ pub(crate) fn grid_find_group_parent(tiles: &[GridTile], group_id: &str) -> Opti
 
 /// Drop group links whose quick-tiles parent no longer exists.
 pub(crate) fn grid_prune_orphan_groups(state: &Rc<GridLayoutState>) {
+    if !cfg!(feature = "ojuny-widgets") {
+        return;
+    }
     let ids = grid_group_ids(&state.tiles.borrow());
     let mut tiles = state.tiles.borrow_mut();
     for tile in tiles.iter_mut() {
@@ -452,6 +478,9 @@ pub(crate) fn grid_prune_orphan_groups(state: &Rc<GridLayoutState>) {
 }
 
 pub(crate) fn grid_id_can_group(id: &str) -> bool {
+    if !cfg!(feature = "ojuny-widgets") {
+        return false;
+    }
     id != "user"
         && id != QUICK_TILES_ID
         && !matches!(
@@ -547,18 +576,18 @@ pub(crate) fn install_grid_css() {
                 background-color: alpha(@window_fg_color, 0.25);
                 border-radius: 3px;
             }
-            .dms-card {
+            .grid-card {
                 background-color: alpha(@window_fg_color, 0.05);
                 border: 1px solid alpha(@window_fg_color, 0.10);
                 border-radius: 14px;
                 padding: 8px;
             }
-            .dms-card:hover { background-color: alpha(@window_fg_color, 0.09); }
-            .dms-card:checked {
+            .grid-card:hover { background-color: alpha(@window_fg_color, 0.09); }
+            .grid-card:checked {
                 border: 2px solid @accent_bg_color;
                 background-color: alpha(@accent_bg_color, 0.12);
             }
-            .dms-card-size {
+            .grid-card-size {
                 background-color: alpha(@window_fg_color, 0.85);
                 color: @window_bg_color;
                 border-radius: 8px;
@@ -566,12 +595,12 @@ pub(crate) fn install_grid_css() {
                 font-size: 11px;
                 font-weight: 700;
             }
-            .dms-card-canvas {
+            .grid-card-canvas {
                 background-color: alpha(@window_fg_color, 0.03);
                 border-radius: 18px;
                 padding: 8px;
             }
-            .dms-drop-preview {
+            .grid-drop-preview {
                 background-color: alpha(@accent_bg_color, 0.15);
                 border: 2px solid alpha(@accent_bg_color, 0.8);
                 border-radius: 14px;
@@ -676,7 +705,15 @@ fn build_grid_popout(fields: &[GridField]) -> gtk::Popover {
 /// carries the resize strips.
 #[allow(dead_code)]
 pub(crate) fn is_dashboard_card_id(id: &str) -> bool {
-    DASH_GRID_REGISTRY.contains(&id)
+    #[cfg(feature = "ojuny-widgets")]
+    {
+        DASH_GRID_REGISTRY.contains(&id)
+    }
+    #[cfg(not(feature = "ojuny-widgets"))]
+    {
+        let _ = id;
+        false
+    }
 }
 
 /// The dashboard card settings that live under `dashOptions.<id>` rather than
@@ -735,7 +772,9 @@ pub(crate) fn make_grid_tile(
     };
     let mut order = GRID_DEFAULT_ORDER;
     let mut enabled_value = true;
-    let locked = profile.surface == GridSurface::ControlCenter && id == "edit";
+    let locked = cfg!(feature = "ojuny-widgets")
+        && profile.surface == GridSurface::ControlCenter
+        && id == "edit";
     let mut fields: Vec<GridField> = Vec::new();
     let mut present = Vec::new();
     for child in scan::scan_value(value_text) {
@@ -748,8 +787,9 @@ pub(crate) fn make_grid_tile(
             "h" => cell.h = text.parse().unwrap_or(1),
             "_order" => order = text.parse().unwrap_or(GRID_DEFAULT_ORDER),
             "enabled" if profile.has_enabled => enabled_value = text == "true",
-            "footer" | "footerEnd" | "footerW" | "footerFill" => {}
-            "tiles" if id == QUICK_TILES_ID => {}
+            "footer" | "footerEnd" | "footerW" | "footerFill"
+                if cfg!(feature = "ojuny-widgets") => {}
+            "tiles" if cfg!(feature = "ojuny-widgets") && id == QUICK_TILES_ID => {}
             _ => {
                 present.push(name);
                 let editor = build_bespoke_child(&child, ctx);
@@ -777,7 +817,8 @@ pub(crate) fn make_grid_tile(
             orig_value: literal.to_string(),
         });
     }
-    let externals = if profile.surface == GridSurface::Dashboard {
+    let externals = if cfg!(feature = "ojuny-widgets") && profile.surface == GridSurface::Dashboard
+    {
         dashboard_option_fields(id, &fields, ctx)
     } else {
         Vec::new()
@@ -825,7 +866,7 @@ pub(crate) fn make_grid_tile(
         card.append(&members_row);
     }
     let button = gtk::ToggleButton::new();
-    button.add_css_class("dms-card");
+    button.add_css_class("grid-card");
     button.set_hexpand(true);
     button.set_vexpand(true);
     button.set_child(Some(&card));
@@ -841,7 +882,7 @@ pub(crate) fn make_grid_tile(
     corner_strip.set_visible(false);
 
     let chrome = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-    chrome.add_css_class("dms-card-chrome");
+    chrome.add_css_class("grid-card-chrome");
     chrome.set_halign(gtk::Align::End);
     chrome.set_valign(gtk::Align::Start);
     chrome.set_margin_top(6);
@@ -864,7 +905,7 @@ pub(crate) fn make_grid_tile(
     options_button.connect_clicked(move |_| for_options.popup());
 
     let size_badge = gtk::Label::new(None);
-    size_badge.add_css_class("dms-card-size");
+    size_badge.add_css_class("grid-card-size");
     size_badge.set_halign(gtk::Align::Start);
     size_badge.set_valign(gtk::Align::Start);
     size_badge.set_margin_top(6);
@@ -1431,7 +1472,11 @@ pub(crate) fn grid_nix(state: &GridLayoutState) -> String {
             .iter()
             .enumerate()
             .map(|(index, tile)| {
-                grid_tile_nix(tile, state.profile, !grid_tile_is_grouped(&tiles, index))
+                grid_tile_nix(
+                    tile,
+                    state.profile.clone(),
+                    !grid_tile_is_grouped(&tiles, index),
+                )
             })
             .collect()
     };
@@ -1534,6 +1579,15 @@ mod tests {
     }
 
     #[test]
+    fn generic_profile_has_no_catalog_entries() {
+        let profile = GridProfile::generic();
+        assert!(profile.registry.is_empty());
+        assert_eq!(profile.columns, 6);
+        assert!(!profile.has_enabled);
+    }
+
+    #[cfg(feature = "ojuny-widgets")]
+    #[test]
     fn grid_profiles_resolve_by_path() {
         let cc = GridProfile::for_path("programs.ojuny.dux.controlCenterWidgets").unwrap();
         assert_eq!((cc.columns, cc.has_enabled), (8, true));
@@ -1544,6 +1598,7 @@ mod tests {
         assert!(GridProfile::for_path("a.b").is_none());
     }
 
+    #[cfg(feature = "ojuny-widgets")]
     #[test]
     fn grid_profiles_accept_the_legacy_dms_namespace() {
         assert_eq!(

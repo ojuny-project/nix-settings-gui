@@ -2,7 +2,7 @@
 # { directory, selected, default, storePath, drvPath, presets, user }.
 # Falls back to the raw presets declared by a flake input when the target has
 # no generated wallpaper options.
-{flakePath, target ? ""}: let
+{flakePath, target ? "", presetOption ? "", presetSource ? ""}: let
   root = builtins.getFlake flakePath;
 
   safe = default: e: let
@@ -23,14 +23,15 @@
     then safe null (root.nixosConfigurations.${part 1}.config.home-manager.users.${part 2} or null)
     else null;
 
-  wallpaper = safe null (
-    if targetConfig != null
-    && targetConfig ? desktop
-    && targetConfig.desktop ? ojuny
-    && targetConfig.desktop.ojuny ? wallpaper
-    then targetConfig.desktop.ojuny.wallpaper
-    else null
-  );
+  segments = builtins.filter builtins.isString (builtins.split "\\." presetOption);
+  readPath = value: name:
+    if value != null && builtins.isAttrs value && value ? ${name}
+    then value.${name}
+    else null;
+  wallpaper =
+    if presetOption == "" || targetConfig == null
+    then null
+    else safe null (builtins.foldl' readPath targetConfig segments);
 
   set = safe null (
     if wallpaper != null && wallpaper ? set && wallpaper.set != null
@@ -40,17 +41,10 @@
 
   inputs = safe {} (root.inputs or {});
   hasPresets = name: safe false (inputs.${name} ? wallpaperPresets);
-  preferred =
-    if inputs ? ojuny-desktop && hasPresets "ojuny-desktop"
-    then "ojuny-desktop"
-    else null;
-  candidates =
-    if preferred != null
-    then []
-    else builtins.filter hasPresets (builtins.attrNames inputs);
+  candidates = builtins.filter hasPresets (builtins.attrNames inputs);
   source =
-    if preferred != null
-    then preferred
+    if presetSource != ""
+    then (if hasPresets presetSource then presetSource else null)
     else if candidates == []
     then null
     else builtins.head candidates;

@@ -1,0 +1,27 @@
+{
+  "profiles": [
+    {
+      "vendor": "example",
+      "pattern": ".*fixture laptop.*",
+      "profile": "example-fixture",
+      "state": "tested"
+    }
+  ],
+  "gpu_profiles": [
+    {
+      "profile": "example-fixture-intel",
+      "owns": true,
+      "variants": [
+        {
+          "layout": "intel"
+        }
+      ]
+    }
+  ],
+  "vendor_aliases": [
+    {
+      "vendor": "example",
+      "pattern": ".*example.*"
+    }
+  ]
+}

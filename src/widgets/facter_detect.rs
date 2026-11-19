@@ -1,7 +1,10 @@
-// Hardware profile detection mirrors the coverage table in ojuny-template's
-// modules/backend/10-hardware-profile.nix and scripts/regenerate-hardware.py.
-// It is kept here so the widget can describe a facter report without running
-// Nix or nix eval.
+use serde::Deserialize;
+use std::path::Path;
+
+// Hardware profile detection uses a JSON catalog built in from the ojuny
+// coverage table by default, and can load an external catalog with
+// `profileCatalog`. It runs here so the widget can describe a facter report
+// without running Nix or nix eval.
 pub(crate) struct ProfileRow {
     pub(crate) vendor: &'static str,
     pub(crate) pattern: &'static str,
@@ -893,6 +896,94 @@ pub(crate) struct GpuMeta {
     pub(crate) variants: &'static [GpuVariant],
 }
 
+/// The profile data the widget uses. The builtin catalog is the ojuny coverage
+/// table; an external JSON catalog can replace it for another configuration.
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct ProfileCatalog {
+    #[serde(default)]
+    pub profiles: Vec<CatalogProfile>,
+    #[serde(default)]
+    pub gpu_profiles: Vec<CatalogGpu>,
+    #[serde(default)]
+    pub vendor_aliases: Vec<CatalogAlias>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CatalogProfile {
+    pub vendor: String,
+    pub pattern: String,
+    pub profile: String,
+    #[serde(default)]
+    pub state: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CatalogGpu {
+    pub profile: String,
+    #[serde(default)]
+    pub owns: bool,
+    #[serde(default)]
+    pub variants: Vec<CatalogVariant>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CatalogVariant {
+    pub layout: String,
+    #[serde(default)]
+    pub profile: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CatalogAlias {
+    pub vendor: String,
+    pub pattern: String,
+}
+
+impl ProfileCatalog {
+    pub fn builtin() -> Self {
+        Self {
+            profiles: HARDWARE_PROFILES
+                .iter()
+                .map(|row| CatalogProfile {
+                    vendor: row.vendor.to_string(),
+                    pattern: row.pattern.to_string(),
+                    profile: row.profile.to_string(),
+                    state: row.state.to_string(),
+                })
+                .collect(),
+            gpu_profiles: GPU_PROFILES
+                .iter()
+                .map(|meta| CatalogGpu {
+                    profile: meta.profile.to_string(),
+                    owns: meta.owns,
+                    variants: meta
+                        .variants
+                        .iter()
+                        .map(|variant| CatalogVariant {
+                            layout: variant.layout.to_string(),
+                            profile: variant.profile.map(str::to_string),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            vendor_aliases: VENDOR_ALIASES
+                .iter()
+                .map(|(vendor, pattern)| CatalogAlias {
+                    vendor: (*vendor).to_string(),
+                    pattern: (*pattern).to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        serde_json::from_str(&text)
+            .map_err(|error| format!("cannot parse {}: {error}", path.display()))
+    }
+}
+
 pub(crate) const GPU_PROFILES: &[GpuMeta] = &[
     GpuMeta {
         profile: "asus-ally-rc71l",
@@ -1376,12 +1467,12 @@ impl HardwareDetection {
     }
 }
 
-pub fn detect_report(text: &str) -> Option<HardwareDetection> {
+pub fn detect_report(text: &str, catalog: &ProfileCatalog) -> Option<HardwareDetection> {
     let report: serde_json::Value = serde_json::from_str(text).ok()?;
-    Some(detect(&report))
+    Some(detect(&report, catalog))
 }
 
-pub(crate) fn detect(report: &serde_json::Value) -> HardwareDetection {
+pub(crate) fn detect(report: &serde_json::Value, catalog: &ProfileCatalog) -> HardwareDetection {
     let mut detection = HardwareDetection::empty();
     let system = report.pointer("/smbios/system");
     let manufacturer = json_str(system, "manufacturer");
@@ -1396,14 +1487,14 @@ pub(crate) fn detect(report: &serde_json::Value) -> HardwareDetection {
     if !model.is_empty() {
         detection.model = model;
     }
-    detection.vendor = classify_vendor(&manufacturer).to_string();
+    detection.vendor = classify_vendor(&manufacturer, catalog).to_string();
     let lowered_product = product.to_lowercase();
     let lowered_version = version.to_lowercase();
     if detection.vendor != "unknown" {
-        if let Some(row) = HARDWARE_PROFILES.iter().find(|row| {
+        if let Some(row) = catalog.profiles.iter().find(|row| {
             row.vendor == detection.vendor.as_str()
-                && (full_match(row.pattern, &lowered_product)
-                    || full_match(row.pattern, &lowered_version))
+                && (full_match(&row.pattern, &lowered_product)
+                    || full_match(&row.pattern, &lowered_version))
         }) {
             detection.base_profile = row.profile.to_string();
             detection.profile = row.profile.to_string();
@@ -1411,22 +1502,23 @@ pub(crate) fn detect(report: &serde_json::Value) -> HardwareDetection {
         }
     }
     let gpu = detect_gpu(report);
-    let (profile, gpu) = resolve_gpu_profile(&detection.base_profile, &gpu);
+    let (profile, gpu) = resolve_gpu_profile(&detection.base_profile, &gpu, catalog);
     detection.profile = profile;
     detection.gpu = gpu;
     detection
 }
 
 /// Every profile the widget can select, sorted for a stable dropdown.
-pub fn profile_choices() -> Vec<String> {
-    let mut names: Vec<String> = HARDWARE_PROFILES
+pub fn profile_choices(catalog: &ProfileCatalog) -> Vec<String> {
+    let mut names: Vec<String> = catalog
+        .profiles
         .iter()
-        .map(|row| row.profile.to_string())
-        .chain(GPU_PROFILES.iter().flat_map(|meta| {
-            std::iter::once(meta.profile.to_string()).chain(
+        .map(|row| row.profile.clone())
+        .chain(catalog.gpu_profiles.iter().flat_map(|meta| {
+            std::iter::once(meta.profile.clone()).chain(
                 meta.variants
                     .iter()
-                    .filter_map(|variant| variant.profile.map(str::to_string)),
+                    .filter_map(|variant| variant.profile.clone()),
             )
         }))
         .collect();
@@ -1438,20 +1530,28 @@ pub fn profile_choices() -> Vec<String> {
 /// The profile and GPU state the configuration would use for `selected`, the
 /// raw value of `ojuny.hardware.profile`. `auto` follows the report; an
 /// explicit profile follows its entry in the GPU table.
-pub(crate) fn effective(selected: &str, detection: &HardwareDetection) -> (String, GpuDetection) {
+pub(crate) fn effective(
+    selected: &str,
+    detection: &HardwareDetection,
+    catalog: &ProfileCatalog,
+) -> (String, GpuDetection) {
     if selected == "auto" {
         return (detection.profile.clone(), detection.gpu.clone());
     }
-    let base = gpu_profile_base(selected).unwrap_or(selected);
-    match GPU_PROFILES.iter().find(|meta| meta.profile == base) {
+    let base = gpu_profile_base(selected, catalog).unwrap_or_else(|| selected.to_string());
+    match catalog
+        .gpu_profiles
+        .iter()
+        .find(|meta| meta.profile == base)
+    {
         Some(meta) => {
             let variant = meta
                 .variants
                 .iter()
-                .find(|variant| variant.profile == Some(selected))
+                .find(|variant| variant.profile.as_deref() == Some(selected))
                 .or_else(|| meta.variants.first());
             let layout = variant
-                .map(|variant| variant.layout)
+                .map(|variant| variant.layout.as_str())
                 .unwrap_or(detection.gpu.layout.as_str())
                 .to_string();
             (
@@ -1474,12 +1574,12 @@ pub(crate) fn effective(selected: &str, detection: &HardwareDetection) -> (Strin
     }
 }
 
-fn gpu_profile_base(selected: &str) -> Option<&'static str> {
-    GPU_PROFILES.iter().find_map(|meta| {
+fn gpu_profile_base(selected: &str, catalog: &ProfileCatalog) -> Option<String> {
+    catalog.gpu_profiles.iter().find_map(|meta| {
         meta.variants
             .iter()
-            .any(|variant| variant.profile == Some(selected))
-            .then_some(meta.profile)
+            .any(|variant| variant.profile.as_deref() == Some(selected))
+            .then(|| meta.profile.clone())
     })
 }
 
@@ -1529,8 +1629,16 @@ fn detect_gpu(report: &serde_json::Value) -> GpuDetection {
     }
 }
 
-fn resolve_gpu_profile(base: &str, gpu: &GpuDetection) -> (String, GpuDetection) {
-    let Some(meta) = GPU_PROFILES.iter().find(|meta| meta.profile == base) else {
+fn resolve_gpu_profile(
+    base: &str,
+    gpu: &GpuDetection,
+    catalog: &ProfileCatalog,
+) -> (String, GpuDetection) {
+    let Some(meta) = catalog
+        .gpu_profiles
+        .iter()
+        .find(|meta| meta.profile == base)
+    else {
         return (base.to_string(), gpu.clone());
     };
     let variant = meta
@@ -1539,13 +1647,11 @@ fn resolve_gpu_profile(base: &str, gpu: &GpuDetection) -> (String, GpuDetection)
         .find(|variant| variant.layout == gpu.layout)
         .or_else(|| meta.variants.first());
     let profile = variant
-        .and_then(|variant| variant.profile)
-        .unwrap_or(base)
-        .to_string();
+        .and_then(|variant| variant.profile.clone())
+        .unwrap_or_else(|| base.to_string());
     let layout = variant
-        .map(|variant| variant.layout)
-        .unwrap_or(gpu.layout.as_str())
-        .to_string();
+        .map(|variant| variant.layout.clone())
+        .unwrap_or_else(|| gpu.layout.clone());
     (
         profile,
         GpuDetection {
@@ -1556,13 +1662,14 @@ fn resolve_gpu_profile(base: &str, gpu: &GpuDetection) -> (String, GpuDetection)
     )
 }
 
-fn classify_vendor(manufacturer: &str) -> &'static str {
+fn classify_vendor(manufacturer: &str, catalog: &ProfileCatalog) -> String {
     let lowered = manufacturer.to_lowercase();
-    VENDOR_ALIASES
+    catalog
+        .vendor_aliases
         .iter()
-        .find(|(_, pattern)| full_match(pattern, &lowered))
-        .map(|(vendor, _)| *vendor)
-        .unwrap_or("unknown")
+        .find(|alias| full_match(&alias.pattern, &lowered))
+        .map(|alias| alias.vendor.clone())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn full_match(pattern: &str, text: &str) -> bool {
@@ -1627,7 +1734,8 @@ mod tests {
 
     #[test]
     fn detects_a_surface_go_from_the_report() {
-        let detection = detect_report(SURFACE_GO).unwrap();
+        let catalog = ProfileCatalog::builtin();
+        let detection = detect_report(SURFACE_GO, &catalog).unwrap();
         assert_eq!(detection.model, "Microsoft Corporation Surface Go");
         assert_eq!(detection.vendor, "microsoft");
         assert_eq!(detection.profile, "microsoft-surface-go");
@@ -1653,7 +1761,8 @@ mod tests {
                 ]
             }
         });
-        let detection = detect(&report);
+        let catalog = ProfileCatalog::builtin();
+        let detection = detect(&report, &catalog);
         assert_eq!(detection.profile, "dell-xps-15-9520-nvidia");
         assert_eq!(detection.gpu.layout, "hybrid-intel-nvidia");
         assert_eq!(detection.gpu.source, "facter");
@@ -1662,18 +1771,61 @@ mod tests {
 
     #[test]
     fn an_explicit_profile_reports_its_effective_gpu_state() {
-        let detection = detect_report(SURFACE_GO).unwrap();
-        let (profile, gpu) = effective("dell-xps-15-9520-nvidia", &detection);
+        let catalog = ProfileCatalog::builtin();
+        let detection = detect_report(SURFACE_GO, &catalog).unwrap();
+        let (profile, gpu) = effective("dell-xps-15-9520-nvidia", &detection, &catalog);
         assert_eq!(profile, "dell-xps-15-9520-nvidia");
         assert_eq!(gpu.layout, "hybrid-intel-nvidia");
         assert_eq!(gpu.source, "profile");
         assert!(gpu.managed);
 
-        let (profile, gpu) = effective("custom-profile", &detection);
+        let (profile, gpu) = effective("custom-profile", &detection, &catalog);
         assert_eq!(profile, "custom-profile");
         assert_eq!(gpu.layout, "unknown");
         assert_eq!(gpu.source, "unknown");
         assert!(!gpu.managed);
+    }
+
+    #[test]
+    fn an_external_catalog_changes_detection() {
+        let catalog = ProfileCatalog {
+            profiles: vec![CatalogProfile {
+                vendor: "example".into(),
+                pattern: ".*fixture laptop.*".into(),
+                profile: "example-fixture".into(),
+                state: "tested".into(),
+            }],
+            gpu_profiles: vec![CatalogGpu {
+                profile: "example-fixture".into(),
+                owns: true,
+                variants: vec![CatalogVariant {
+                    layout: "intel".into(),
+                    profile: None,
+                }],
+            }],
+            vendor_aliases: vec![CatalogAlias {
+                vendor: "example".into(),
+                pattern: ".*example.*".into(),
+            }],
+        };
+        let report = serde_json::json!({
+            "smbios": {
+                "system": {
+                    "manufacturer": "Example",
+                    "product": "Fixture Laptop"
+                }
+            },
+            "hardware": {
+                "graphics_card": [
+                    {"vendor": {"name": "Intel Corporation", "hex": "8086"}}
+                ]
+            }
+        });
+        let detection = detect(&report, &catalog);
+        assert_eq!(detection.profile, "example-fixture");
+        assert_eq!(detection.state, "tested");
+        assert_eq!(detection.gpu.layout, "intel");
+        assert!(detection.gpu.managed);
     }
 
     #[test]
@@ -1686,7 +1838,8 @@ mod tests {
                 }
             }
         });
-        let detection = detect(&report);
+        let catalog = ProfileCatalog::builtin();
+        let detection = detect(&report, &catalog);
         assert_eq!(detection.profile, "unmatched");
         assert_eq!(detection.state, "unmatched");
     }

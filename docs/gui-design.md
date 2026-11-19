@@ -204,12 +204,15 @@ can be resolved. The special name `"all"` in a `systems` list matches every host
 Bespoke controls (`keybinds`, `monitors`, `theme`, `wallpaper`, `font`,
 `icon-theme`, `cursor-theme`, `menu`, `plugins`, `bar`, `dock`, `users`,
 `facter`, `docker`, `secureboot`) render a configuration-specific UI for a
-single option, with their own add, remove, and reorder actions. The style choosers share one inline search list and preview
+single option, with their own add, remove, and reorder actions. The generic
+controls (`keybinds`, `wallpaper`, `facter`, `docker`, and
+`grid-configuration`) take their schema from flat `@option` directives or from
+data files. `bar`, `dock`, `menu`, `plugins`, and the Dux grid profiles stay
+under the `ojuny-widgets` feature and keep hard-coded shapes. The style choosers share one inline search list and preview
 pane, modelled on the palette control; each has an `Installed only` toggle.
 Installed entries preview live, while catalog entries that are not installed
 use embedded preview sheets. Selecting a
-catalog entry stages the name and the package option named by `packageOption`. Their field shapes are hard-coded in the
-application; the configuration only names the widget through `@option`. The
+catalog entry stages the name and the package option named by `packageOption`. The
 `plugins` control also reads a newly added plugin's settings QML from the DMS
 registry and renders its declarative `ToggleSetting`, `StringSetting`,
 `SliderSetting`, `SelectionSetting`, `ColorSetting`, and list controls.
@@ -274,14 +277,15 @@ settings tail. Added widgets use `@widget-preset` metadata when present,
 otherwise a generic entry is created.
 
 Grid controls (`grid-configuration`) render a card canvas plus a side details
-pane. Cards can be added through a searchable picker, dragged, resized, enabled
-or grouped into a quick-tiles row, and edited field by field. New cards use DMS
-default sizes for known ids. "Reset sizes" reapplies catalog sizes to every
-card, "Reset card size" restores the selected card, and "Clear all" requires a
-second click. Weather, dashboard, and control center are profiles over the same
-editor. The number of grid columns remains fixed by the `gridColumns` directive
-on the `@option`; column and row counts are not stored inside the card
-collection.
+pane. Cards can be added through a searchable picker, dragged, resized, enabled,
+and edited field by field. With the `ojuny-widgets` feature, weather, dashboard,
+and control center paths use the DMS catalog, default sizes, and quick-tile
+grouping. Without the feature, the generic profile reads `gridRegistry` for the
+picker, defaults every unknown id to 1x1, and leaves unknown fields intact.
+`gridEnabled` adds an enable switch for generic grids. "Reset sizes", "Reset card
+size", and "Clear all" are available in both modes. The number of grid columns
+remains fixed by the `gridColumns` directive; column and row counts are not
+stored inside the card collection.
 
 ## 7. Settings submenu
 

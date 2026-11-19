@@ -30,6 +30,8 @@ const DUX_PLUGINS_APPLY: &str = r#"f: f {
 const WALLPAPERS_APPLY: &str = r#"f: f {
   flakePath = builtins.getEnv "NSG_FLAKE_PATH";
   target = builtins.getEnv "NSG_TARGET";
+  presetOption = builtins.getEnv "NSG_PRESET_OPTION";
+  presetSource = builtins.getEnv "NSG_PRESET_SOURCE";
 }"#;
 
 /// Applies the one-plugin settings extractor to its named arguments.
@@ -290,13 +292,23 @@ fn realize_wallpapers(out_path: &str, drv_path: &str) {
 
 /// The generated wallpaper set for a target, or the raw presets declared by
 /// the config flake input when the target has no generated set.
-pub fn wallpaper_set(flake_path: &str, target: &str) -> Result<WallpaperSet, String> {
+pub fn wallpaper_set(
+    flake_path: &str,
+    target: &str,
+    preset_option: &str,
+    preset_source: &str,
+) -> Result<WallpaperSet, String> {
     let path = std::env::temp_dir().join("nix-settings-gui-wallpapers-to-json.nix");
     let _ = std::fs::write(&path, WALLPAPERS_TO_JSON);
     let json = eval_script(
         &path,
         WALLPAPERS_APPLY,
-        &[("NSG_FLAKE_PATH", flake_path), ("NSG_TARGET", target)],
+        &[
+            ("NSG_FLAKE_PATH", flake_path),
+            ("NSG_TARGET", target),
+            ("NSG_PRESET_OPTION", preset_option),
+            ("NSG_PRESET_SOURCE", preset_source),
+        ],
     )?;
     let payload: WallpaperSet =
         serde_json::from_str(&json).map_err(|e| format!("cannot parse nix output: {e}"))?;

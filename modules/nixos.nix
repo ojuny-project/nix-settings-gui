@@ -15,7 +15,7 @@ in {
     withOjunyWidgets = mkOption {
       type = types.bool;
       default = true;
-      description = "Build with the ojuny-specific bar, dock, menu, plugins, grid and docker widgets.";
+      description = "Build with the ojuny-specific bar, dock, menu, plugins, and Dux grid profiles. Generic keybinds, wallpaper, facter, docker, and grid widgets are always included.";
     };
 
     package = mkOption {

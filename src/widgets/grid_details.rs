@@ -1,4 +1,3 @@
-use super::dms_catalog::{card_defaults, card_size, widget_description, widget_icon};
 use super::fields::{dim_line, dim_line_with_help};
 use super::grid::{
     grid_can_group, grid_group_ids, grid_group_members, grid_group_tile, grid_id_can_group,
@@ -7,6 +6,7 @@ use super::grid::{
     grid_ungroup_tile, grid_update_size_caption, grid_update_strips, make_grid_tile,
     GridLayoutState, GridProfile,
 };
+use super::grid_catalog::{card_defaults, card_size, widget_description, widget_icon};
 use super::grid_gestures::wire_grid_tile;
 use super::grid_layout::{grid_clamp_cell, grid_first_fit, CellRect};
 use super::names::{field_help, widget_display_name};
@@ -116,7 +116,7 @@ pub(crate) fn build_grid_adder(
             popover.popdown();
         });
     }
-    if advanced {
+    if advanced || available.is_empty() {
         let entry = gtk::Entry::new();
         entry.set_placeholder_text(Some("Custom id"));
         entry.set_width_chars(14);
@@ -150,7 +150,7 @@ pub(crate) fn grid_clear_all(state: &Rc<GridLayoutState>) {
 /// Reset every card to its catalog size and first-fit it again, keeping the
 /// card's fields and unknown settings.
 pub(crate) fn grid_reset_layout(state: &Rc<GridLayoutState>) {
-    let profile = state.profile;
+    let profile = state.profile.clone();
     let mut taken: Vec<CellRect> = Vec::new();
     {
         let mut tiles = state.tiles.borrow_mut();
@@ -182,7 +182,7 @@ pub(crate) fn grid_reset_layout(state: &Rc<GridLayoutState>) {
 }
 
 pub(crate) fn grid_reset_tile(state: &Rc<GridLayoutState>, index: usize) {
-    let profile = state.profile;
+    let profile = state.profile.clone();
     let Some(tile) = state.tiles.borrow().get(index).cloned() else {
         return;
     };
@@ -320,7 +320,7 @@ pub(crate) fn grid_add_tile(state: &Rc<GridLayoutState>, id: &str) {
     if state.tiles.borrow().iter().any(|tile| tile.id == id) {
         return;
     }
-    let profile = state.profile;
+    let profile = state.profile.clone();
     let order = state
         .tiles
         .borrow()
@@ -342,7 +342,7 @@ pub(crate) fn grid_add_tile(state: &Rc<GridLayoutState>, id: &str) {
             .collect();
         grid_first_fit(&taken, profile.columns, w, h)
     };
-    let value = grid_scaffold_value(profile, id, order, cell);
+    let value = grid_scaffold_value(profile.clone(), id, order, cell);
     let mut tile = make_grid_tile(id, &value, profile, &state.ctx);
     if grid_tile_is_quick_tiles(&tile) {
         super::grid::grid_ensure_group_id(&mut tile);
@@ -369,7 +369,7 @@ pub(crate) fn grid_add_member(state: &Rc<GridLayoutState>, parent_index: usize, 
     if state.tiles.borrow().iter().any(|tile| tile.id == id) {
         return;
     }
-    let profile = state.profile;
+    let profile = state.profile.clone();
     let group_id = {
         let mut tiles = state.tiles.borrow_mut();
         let Some(parent) = tiles.get_mut(parent_index) else {

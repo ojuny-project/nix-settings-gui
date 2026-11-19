@@ -6,6 +6,8 @@ description = "A comment-driven settings GUI for Nix"
 
 [features]
 default = ["ojuny-widgets"]
+# Gates the bar, dock, menu, plugins, DMS grid profiles, and their catalogs.
+# Generic keybinds, wallpaper, facter, docker, and grid widgets stay compiled.
 ojuny-widgets = []
 
 [dependencies]

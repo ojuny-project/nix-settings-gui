@@ -108,7 +108,14 @@ columns, resolving `iconDir` and showing a preview with an "Add icon" button.
 `widgets/font.rs`, `widgets/icon_theme.rs`, and `widgets/cursor_theme.rs` supply
 their catalogs and previews; `widgets/theme_catalog.rs` discovers installed
 themes, `widgets/xcursor.rs` decodes cursor files, and `widgets/style_catalog.rs`
-loads the Nixpkgs-only manifest embedded by `build.rs`. `widgets/secureboot.rs`
+loads the Nixpkgs-only manifest embedded by `build.rs`. `widgets/grid_catalog.rs`
+is the always-compiled grid catalog seam: it provides generic defaults and
+delegates to the gated `widgets/dms_catalog.rs` when `ojuny-widgets` is enabled.
+`widgets/grid.rs`, `grid_details.rs`, `grid_gestures.rs`, and `grid_layout.rs`
+are always compiled; only the DMS profiles, registries, and card data are gated.
+`widgets/docker.rs`, `widgets/keybinds.rs`, `widgets/wallpaper.rs`,
+`widgets/facter.rs`, and `widgets/facter_detect.rs` are generic and read their
+schema from `@option` directives or data files. `widgets/secureboot.rs`
 renders the Secure Boot card and `widgets/secureboot_wizard.rs` renders the
 stage-driven setup dialog; both use hooks so they stay free of process handling
 and file writes. A style editor can emit

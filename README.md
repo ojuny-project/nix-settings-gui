@@ -5,7 +5,10 @@
 nix-settings-gui renders an annotated Nix configuration as a graphical settings window. A `@menu` comment defines a menu and an `@option` comment defines one control, so annotated files stay valid Nix. Saves are
 written back as span patches, checked with `nixd`, and formatted with `nixfmt`.
 
-nix-settings-gui contains multiple custom components for ojuny, but is entirely useable on non-ojuny devices, supporting a wide variety of general modules. 
+The generic widgets (`keybinds`, `wallpaper`, `facter`, `docker`,
+`grid-configuration`, and the shared controls) are available on any
+configuration. The ojuny-specific bar, dock, menu, plugins, and Dux grid
+profiles are optional.
 
 
 ## Requirements
@@ -26,10 +29,11 @@ Enable the NixOS module in `configuration.nix`:
 services.nix-settings-gui.enable = true;
 ```
 
-The ojuny-specific bar, dock, menu, plugins, grid, and docker widgets are
-built by default. Set `services.nix-settings-gui.withOjunyWidgets = false` to
-build without them. The flake also exports `packages.<system>.nix-settings-gui-minimal`
-for the same build.
+The ojuny-specific bar, dock, menu, plugins, and Dux grid profiles are built by
+default. Set `services.nix-settings-gui.withOjunyWidgets = false` to build
+without them. The generic keybinds, wallpaper, facter, docker, and
+`grid-configuration` widgets remain in that build. The flake also exports
+`packages.<system>.nix-settings-gui-minimal` for the same build.
 
 Rebuild with `nixos-rebuild switch`. The package installs `nix-settings-gui` in
 `environment.systemPackages` and adds a desktop entry. The flake exports
@@ -77,8 +81,10 @@ The marker reference covers widgets, choices, tables, and templates in
 
 ## Limits
 
-- The ojuny-specific widgets are optional. Build with `--no-default-features`
-  or use the `nix-settings-gui-minimal` package to leave them out.
+- The ojuny-specific bar, dock, menu, plugins, and Dux grid profiles are
+  optional. Build with `--no-default-features` or use the
+  `nix-settings-gui-minimal` package to leave them out. The generic keybinds,
+  wallpaper, facter, docker, and grid widgets stay available.
 - Options come from the module system, so annotations inside `lib.mkMerge`, a
   list of attribute sets, `map`, or `forEach` are dropped.
 - Freeform settings need a descriptor sidecar.

@@ -46,9 +46,16 @@ pub type PluginRegistryHook =
 /// main thread. `None` means the plugin ships no settings file.
 pub type PluginSettingsHook = Rc<dyn Fn(String, Box<dyn FnOnce(Result<Option<String>, String>)>)>;
 
+/// The per-option inputs for a wallpaper preset fetch.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WallpaperRequest {
+    pub preset_source: Option<String>,
+    pub preset_option: Option<String>,
+}
+
 /// Fetches the generated wallpaper set for the current configuration target.
 pub type WallpaperSetHook =
-    Rc<dyn Fn(Box<dyn FnOnce(Result<crate::metadata::WallpaperSet, String>)>)>;
+    Rc<dyn Fn(WallpaperRequest, Box<dyn FnOnce(Result<crate::metadata::WallpaperSet, String>)>)>;
 
 /// Runs the apply command of an option the user changed. Supplied by the app
 /// so the widgets stay free of process handling.
@@ -70,8 +77,7 @@ pub type SecureBootWrite =
 pub type SecureBootRun = Rc<dyn Fn(&[String]) -> Result<(), String>>;
 
 /// Runs privileged setup commands through pkexec and returns their output.
-pub type SecureBootExec =
-    Rc<dyn Fn(Vec<String>, Box<dyn FnOnce(Result<String, String>)>)>;
+pub type SecureBootExec = Rc<dyn Fn(Vec<String>, Box<dyn FnOnce(Result<String, String>)>)>;
 
 /// Saves the configuration and starts the configured rebuild.
 pub type SecureBootRebuild = Rc<dyn Fn()>;

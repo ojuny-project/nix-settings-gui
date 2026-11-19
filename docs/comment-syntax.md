@@ -100,7 +100,19 @@ services.pipewire.enable = true;
 | `visibleWhen.notEquals` | literal | Value the governing option must not equal. |
 | `applyCommand` | string     | Shell command that applies the option immediately, without saving. |
 | `wallpaperDir` | string     | Directory holding wallpaper images, relative to the file containing the option. Defaults to `./wallpapers`. |
-| `presetSource` | string | Flake input that declares wallpaper presets, e.g. `ojuny-desktop`. When set, the wallpaper picker loads the generated themed wallpaper set for the current target and lists those presets before the images in `wallpaperDir`. |
+| `presetSource` | string | Flake input that declares wallpaper presets. When set, the wallpaper picker lists that input's presets before the images in `wallpaperDir`. |
+| `presetOption` | string | Dotted option path inside the target configuration that holds the generated wallpaper set, e.g. `desktop.ojuny.wallpaper`. |
+| `bindFields` | list of strings | Ordered fields shown by `keybinds`. Defaults to `modifier`, `keys`, `dispatcher`, `args`, `description`, `group`, `subcat`. |
+| `bindFieldTypes` | list of strings | Per-field editor hints for `bindFields`: `bool`, `int`, `float`, `str`, or `list`. Omitted entries are inferred. |
+| `bindPreview` | list of strings | Fields shown in the row preview, in order. Defaults to `modifier` and `keys`. |
+| `bindSort` | list of strings | Fields used to sort bind rows. An empty list keeps source order. Defaults to `group` and `subcat`. |
+| `bindKeyField` | string | Field used as the display name for list-shaped bind sets. |
+| `imageField`, `portsField`, `volumesField`, `environmentField`, `autoStartField` | string | Container field names used by `docker`. Defaults are `image`, `ports`, `volumes`, `environment`, and `autoStart`. An empty value hides that field. |
+| `autoStartDefault` | boolean | Value used for a newly added container's `autoStart` field. Default `true`. |
+| `reportPath` | string | Hardware report JSON path for `facter`, relative to the configuration root. Defaults to the standard `facter.json` search. |
+| `profileCatalog` | string | Profile catalog JSON path for `facter`, relative to the configuration root. Defaults to the builtin catalog. |
+| `gridRegistry` | list of strings | Card ids offered by the generic `grid-configuration` picker. |
+| `gridEnabled` | boolean | Whether a generic `grid-configuration` writes an `enabled` field for each card. Default `false`. |
 | `iconDir`     | string          | Directory holding icons added by `icon` table columns, relative to the file containing the option. Defaults to `./icons`. |
 | `fileDir`     | string          | Directory holding files added by the `file` widget, relative to the file containing the option. Defaults to `./files`. |
 | `fileExtensions` | list of strings | Extensions the `file` widget offers. Defaults to common image and text extensions. |
@@ -374,29 +386,37 @@ row scaffolded from `columns`, "remove" deletes the selected row.
 
 ### Bespoke widgets
 
-These widgets hard-code the shape of a specific configuration and attach to the
-relevant option with `widget = "..."`. They render at the top level of a menu and
-provide their own editing UI, including add, remove, and reorder actions where
-the shape needs them. The template only names the widget; the field shape lives
-in the application.
+These widgets attach to the relevant option with `widget = "..."`. They render
+at the top level of a menu and provide their own editing UI, including add,
+remove, and reorder actions where the shape needs them. `keybinds`, `wallpaper`,
+`facter`, `docker`, and `grid-configuration` take their schema from directives
+or data files. `menu`, `plugins`, `bar`, and `dock` keep a fixed application
+shape.
 
 | Widget | Attach to | Shape |
 |--------|-----------|-------|
-| `keybinds` | a bind mode, e.g. `binds.default` | `name -> { modifier; keys; dispatcher; args; description; group; subcat; }`. Shows a `modifier+keys` preview per row and opens a popout to edit the fields. |
+| `keybinds` | a bind mode or list of bind sets | Defaults to `name -> { modifier; keys; dispatcher; args; description; group; subcat; }`. `bindFields`, `bindFieldTypes`, `bindPreview`, `bindSort`, and `bindKeyField` replace that schema. Unknown fields are preserved verbatim. |
 | `monitors` | `services.nix-settings-gui.monitors` | An attribute set keyed by output name. Each value carries the generic output keys, grouped under `match`, `color`, `hdr`, `sync`, `render`, `signal`, `reserved`, `hotCorners`, and `background`. The key is the identity and cannot be renamed. See `outputs-contract.md`. |
 | `theme` | the scheme option | a scheme name string. Shows a swatch per bundled scheme and writes the short name (`base16-ocean` becomes `ocean`). `polarity` and `wallpaper` stay separate options. |
 | `font` | a font family option, e.g. `stylix.fonts.monospace.name` | An inline search list with previews. The shipped catalog contains Nixpkgs font families, including Nerd Fonts; an `Installed only` toggle hides entries that are not installed. Selecting an entry writes the family and the package named by `packageOption`. `monospace = true` filters the list. |
 | `icon-theme` | an icon theme option, e.g. `stylix.icons.dark` | An inline search list with live sample icons for installed themes and baked preview sheets for uninstalled themes. An `Installed only` toggle hides entries that are not installed. Selecting an entry writes the theme and the package named by `packageOption`; `variant` filters dark or light entries. |
 | `cursor-theme` | `stylix.cursor.name` | An inline search list with decoded cursor previews for installed themes and baked preview sheets for uninstalled themes. An `Installed only` toggle hides entries that are not installed. Selecting an entry writes the theme and the package named by `packageOption`. |
-| `wallpaper` | the wallpaper option | `null` for the default themed preset, a preset name, or a path to an image. With `presetSource`, the strip starts with the themed generated presets, then the images in `wallpaperDir`. Added files are copied into `wallpaperDir` and staged with `git add`; preset tiles are not removable. |
+| `wallpaper` | the wallpaper option | `null` for the default preset, a preset name, or a path to an image. With `presetSource`, the strip starts with that input's presets; with `presetOption`, it also reads the generated themed set at that path. Images in `wallpaperDir` follow. Added files are copied into `wallpaperDir` and staged with `git add`; preset tiles are not removable. |
 | `menu` | `dankMenu.menu` | an attribute set keyed by dotted id. Splits the id on `.` and renders a nestable tree; leaves are editable rows. |
 | `plugins` | `desktop.ojuny.dux.plugins` | a name-keyed attribute set of `{ enable; src; settings; dir; config; }`. `settings` renders as `raw` unless annotated as a typed submodule. |
 | `bar` | `barConfigs` | a name-keyed attribute set with id-keyed `left`/`center`/`right` widget lists plus layout and appearance. |
 | `dock` | `dockConfigs` | the same shape as `bar`, in its own control. |
 | `users` | `users.users` | a name-keyed attribute set of accounts. Edits `description`, `hashedPassword`, `extraGroups`, `uid`, `shell`, `openssh.authorizedKeys.keys`, and an extra-options field. `wheel` is a separate sudo toggle. The add and remove actions keep at least one normal account with sudo and a password. |
-| `facter` | `ojuny.hardware.profile` | Finds the first `facter.json` in the flake, falling back to `modules/facter.json`, and shows the detected model, detected profile, coverage state, effective GPU layout, GPU source, and whether the profile manages the GPU. The profile dropdown writes the normal string assignment. A missing report leaves the dropdown usable with empty detection details. |
-| `docker` | `ojuny.patch.docker.containers` | a name-keyed attribute set of `{ image; ports; volumes; environment; autoStart; }`. Add, edit, and remove one container at a time; `environment` is edited as key/value text rows. |
+| `facter` | a profile string option, e.g. `ojuny.hardware.profile` | Finds the first `facter.json` in the flake, falling back to `modules/facter.json`, or `reportPath`. Shows the detected model, profile, coverage state, effective GPU layout, GPU source, and whether the profile manages the GPU. `profileCatalog` replaces the builtin profile table. The dropdown writes the normal string assignment. A missing report leaves the dropdown usable with empty detection details. |
+| `docker` | a name-keyed container attribute set, e.g. `ojuny.patch.docker.containers` or `virtualisation.oci-containers.containers` | Defaults to `{ image; ports; volumes; environment; autoStart; }`. `imageField`, `portsField`, `volumesField`, `environmentField`, and `autoStartField` replace those names. Add, edit, and remove one container at a time; `environment` is edited as key/value text rows; absent fields stay absent and unknown fields are preserved. |
 | `secureboot` | `boot.lanzaboote.enable` | Shows live UEFI state from `bootctl` and `sbctl`, edits the Lanzaboote toggle, and opens a guided setup flow. The flow adds the `lanzaboote` flake input, writes the remaining Lanzaboote options, and runs key setup. Existing keys are kept unless the user explicitly removes them. |
+
+A `profileCatalog` file is a JSON object with `profiles`, `gpu_profiles`, and
+`vendor_aliases`. Each profile has `vendor`, `pattern`, `profile`, and `state`.
+Each GPU profile has `profile`, `owns`, and `variants`, where a variant has
+`layout` and an optional `profile`. Each alias has `vendor` and `pattern`. The
+builtin catalog is used when the directive is absent or the file cannot be
+loaded.
 
 The `users` widget expects the whole `users.users` attribute set, not a single
 account. Place the marker above that assignment:
@@ -499,11 +519,13 @@ Bar and dock widget lists keep disabled entries (`enabled = false`) instead of
 dropping them. They can be re-enabled or removed from the editor. Each widget id
 appears once because the convenience options are id-keyed attrsets.
 
-Grid controls for control center widgets, dashboard cards, and weather widgets
-use the same editor. New cards use the Dux Modular Shell default size for their id, and the
-editor supports add, remove, move, resize, enable, quick-tile grouping, reset
-sizes, reset selected, and clear all. `gridColumns` fixes the column count for
-the control; panel column and row counts are not stored in the card collection.
+Grid controls use the same editor. With the ojuny widget feature, control
+center, dashboard, and weather paths use the Dux Modular Shell catalog and quick
+tile grouping. Other configurations use the generic grid: `gridColumns` fixes
+the column count, `gridRegistry` lists the ids offered by the picker, and
+`gridEnabled` adds an enable switch. Unknown ids and fields are preserved. The
+editor supports add, remove, move, resize, and clear all; card sizes and
+positions are stored in the card collection.
 
 ## 4. Default type mapping
 
