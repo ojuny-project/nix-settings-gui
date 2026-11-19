@@ -80,3 +80,71 @@ pub(crate) fn widget_description(id: &str) -> &'static str {
         ""
     }
 }
+
+/// One grid surface and the card ids its picker offers.
+pub(crate) struct GridProfileData {
+    pub(crate) surface: GridSurface,
+    pub(crate) key: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) columns: i64,
+    pub(crate) max_rows: i64,
+    pub(crate) has_enabled: bool,
+    pub(crate) registry: Vec<String>,
+}
+
+fn profile_data(
+    profile: super::grid::GridProfile,
+    key: &'static str,
+    label: &'static str,
+) -> GridProfileData {
+    GridProfileData {
+        surface: profile.surface,
+        key,
+        label,
+        columns: profile.columns,
+        max_rows: profile.max_rows,
+        has_enabled: profile.has_enabled,
+        registry: profile.registry.iter().cloned().collect(),
+    }
+}
+
+/// Every surface the editor can build, including the generic fallback.
+pub(crate) fn profile_metadata() -> Vec<GridProfileData> {
+    let mut profiles = Vec::new();
+    #[cfg(feature = "ojuny-widgets")]
+    {
+        if let Some(profile) = super::grid::GridProfile::for_path(
+            "programs.ojuny.dux.controlCenterWidgets",
+        ) {
+            profiles.push(profile_data(profile, "controlCenter", "Control Center"));
+        }
+        if let Some(profile) = super::grid::GridProfile::for_path("desktop.ojuny.dux.dashCards") {
+            profiles.push(profile_data(profile, "dashboard", "Dashboard"));
+        }
+        if let Some(profile) = super::grid::GridProfile::for_path(
+            "programs.ojuny.dux.weather.widgets",
+        ) {
+            profiles.push(profile_data(profile, "weather", "Weather"));
+        }
+    }
+    profiles.push(profile_data(
+        super::grid::GridProfile::generic(),
+        "generic",
+        "Generic",
+    ));
+    profiles
+}
+
+/// Default sizes for every card id the profiles know about, deduplicated.
+pub(crate) fn size_metadata() -> Vec<CardSize> {
+    let mut sizes = Vec::new();
+    for profile in profile_metadata() {
+        for id in &profile.registry {
+            sizes.push(card_size(profile.surface, id));
+        }
+    }
+    if sizes.is_empty() {
+        sizes.push(default_size());
+    }
+    sizes
+}

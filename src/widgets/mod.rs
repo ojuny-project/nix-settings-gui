@@ -15,7 +15,7 @@ mod fields;
 mod file;
 mod font;
 mod grid;
-mod grid_catalog;
+pub(crate) mod grid_catalog;
 mod grid_details;
 mod grid_gestures;
 mod grid_layout;

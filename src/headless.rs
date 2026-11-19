@@ -27,6 +27,53 @@ pub fn keybind_field_help(name: &str) -> Option<&'static str> {
     crate::widgets::names::keybind_field_help(name)
 }
 
+/// Default card sizes across the grid surfaces, sorted by height then width.
+pub fn grid_card_sizes() -> Value {
+    let mut sizes = crate::widgets::grid_catalog::size_metadata();
+    sizes.sort_by_key(|size| (size.h, size.w));
+    sizes.dedup_by_key(|size| (size.w, size.h));
+    Value::Array(
+        sizes
+            .iter()
+            .map(|size| {
+                json!({
+                    "w": size.w,
+                    "h": size.h,
+                    "label": format!("{}x{}", size.w, size.h),
+                })
+            })
+            .collect(),
+    )
+}
+
+/// Every grid surface with its column count, row limit, and registry cards.
+pub fn grid_profiles() -> Value {
+    let profiles: Vec<Value> = crate::widgets::grid_catalog::profile_metadata()
+        .into_iter()
+        .map(|profile| {
+            let registry: Vec<Value> = profile
+                .registry
+                .iter()
+                .map(|id| {
+                    json!({
+                        "id": id,
+                        "label": crate::widgets::names::widget_display_name(id),
+                    })
+                })
+                .collect();
+            json!({
+                "surface": profile.key,
+                "label": profile.label,
+                "columns": profile.columns,
+                "maxRows": profile.max_rows,
+                "hasEnabled": profile.has_enabled,
+                "registry": registry,
+            })
+        })
+        .collect();
+    Value::Array(profiles)
+}
+
 /// The controls declared by a plugin's Settings.qml.
 #[cfg(feature = "ojuny-widgets")]
 pub fn plugin_settings_schema(qml: &str) -> Value {
@@ -56,4 +103,17 @@ pub fn plugin_settings_schema(qml: &str) -> Value {
         })
         .collect();
     Value::Array(fields)
+}
+
+#[cfg(all(test, feature = "ojuny-widgets"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grid_metadata_is_populated_with_the_dms_catalog() {
+        let sizes = grid_card_sizes();
+        let profiles = grid_profiles();
+        assert!(!sizes.as_array().unwrap().is_empty());
+        assert!(!profiles.as_array().unwrap().is_empty());
+    }
 }
