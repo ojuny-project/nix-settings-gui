@@ -30,7 +30,7 @@ mod monitor_features;
 mod monitor_geometry;
 mod monitor_picker;
 mod monitors;
-mod names;
+pub(crate) mod names;
 pub(crate) mod nix;
 mod popout;
 mod secureboot;

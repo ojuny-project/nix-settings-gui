@@ -14,6 +14,7 @@ pub mod dsl;
 pub mod edit;
 pub mod error_dialog;
 pub mod flake_inputs;
+pub mod headless;
 pub mod flake_lock;
 pub mod flake_ref;
 pub mod flake_update;
