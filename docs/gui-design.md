@@ -30,6 +30,10 @@ message pump.
 +----------------------------------------------------------------------+
 ```
 
+The default layout uses the paned region shown above. Section 1.5 describes the
+alternate category view, which replaces that region with a tile grid and keeps
+the header and bottom bars.
+
 ### 1.1 Top bar
 
 - Title: the flake name or config path.
@@ -127,6 +131,31 @@ switches; path adds a folder chooser; tarball and file add a NAR hash field.
 `Check for updates` reports progress for each input, offers a Cancel action, and
 stops an input that exceeds its timeout. A failed or timed-out input shows its
 error inline on that input's row instead of leaving the spinner running.
+
+### 1.5 Category view
+
+`view_mode` in the config file, or `--view categories` on the command line,
+replaces the menu list and content pane with a tile grid. The default is
+`list`. The flag overrides the config for that launch, including a second
+launch that raises the open window.
+
+- Home shows one tile per `@menu category`, with the category string verbatim,
+  then Flake Inputs, then Nix Settings GUI.
+- Opening a category shows its pages as tiles. All pages shows every visible
+  page plus the two built-ins, without category tiles.
+- A single click selects a tile. Arrow keys move the selection. Enter or a
+  double click opens it.
+- Back returns to the previous grid, Top returns Home, and All pages opens the
+  flat grid. The title beside those buttons names the level.
+- A category has no file and no `@menu icon`, so the home grid resolves one
+  from a keyword catalog in `src/widgets/category_icon.rs`, then from the most
+  common page icon in that category, then `preferences-system-symbolic`. Page
+  tiles keep using `@menu icon`.
+- The search box filters tiles at the home and page-grid levels and keeps the
+  existing control filter inside a page. Advanced and System only filter the
+  tiles the same way they filter the menu list.
+- The Nix Settings GUI tile opens an inline page with the Configure form and
+  the runtime preference switches.
 
 ## 2. Bottom bar
 
@@ -318,6 +347,7 @@ Stored in `~/.config/nix-settings-gui/config.json`:
 | `reload_mango_on_rebuild` | Append the mango reload command after a successful rebuild. |
 | `reload_dms_on_rebuild` | Append the DMS reload command after a successful rebuild. |
 | `auto_git_sync`    | Pull on open; offer a commit and push after Save. |
+| `view_mode`        | `list` or `categories` presentation. Defaults to `list`. |
 
 The runtime preferences `live_apply`, `expand_details_by_default`,
 `reload_mango_on_rebuild`, `reload_dms_on_rebuild`, and `auto_git_sync` are

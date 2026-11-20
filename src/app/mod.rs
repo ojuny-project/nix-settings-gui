@@ -9,9 +9,10 @@ use gtk::prelude::*;
 use regex::Regex;
 
 use crate::cli;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, ViewMode};
 
 mod apply;
+mod configure;
 mod controls;
 mod dialogs;
 mod enrich;
@@ -26,6 +27,7 @@ mod pump;
 mod save;
 mod secureboot;
 mod state;
+mod view;
 mod wallpaper;
 
 use apply::ApplyState;
@@ -44,7 +46,17 @@ pub const APP_ID: &str = "org.nix_settings_gui.NixSettingsGui";
 // UI construction
 // ---------------------------------------------------------------------------
 
-fn preference_row(label: &str, tooltip: &str, switch: &gtk::Switch) -> gtk::Box {
+fn nav_button(icon: &str, label: &str, tooltip: &str) -> gtk::Button {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    content.append(&gtk::Image::from_icon_name(icon));
+    content.append(&gtk::Label::new(Some(label)));
+    let button = gtk::Button::new();
+    button.set_child(Some(&content));
+    button.set_tooltip_text(Some(tooltip));
+    button
+}
+
+pub(super) fn preference_row(label: &str, tooltip: &str, switch: &gtk::Switch) -> gtk::Box {
     let text = gtk::Label::builder()
         .label(label)
         .xalign(0.0)
@@ -62,7 +74,10 @@ fn build_ui(
     tx: &Tx,
     page_pattern: Option<Regex>,
     descriptors_path: Option<String>,
+    view: Option<ViewMode>,
 ) -> Rc<App> {
+    let loaded_config = AppConfig::load();
+    let view_mode = view.unwrap_or(loaded_config.view_mode);
     let descriptor_path = descriptors_path
         .filter(|path| !path.trim().is_empty())
         .or_else(|| {
@@ -82,7 +97,9 @@ fn build_ui(
         ".search-hit { outline: 2px solid @accent_color; border-radius: 6px; }\n\
          .group-header { color: @accent_color; font-weight: 700; }\n\
          .busy-scrim { background-color: rgba(0, 0, 0, 0.45); }\n\
-         .busy-spinner { color: white; }",
+         .busy-spinner { color: white; }\n\
+         .settings-tile { border-radius: 12px; padding: 8px; }\n\
+         .settings-tile:hover { background-color: alpha(@accent_bg_color, 0.12); }",
     );
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(
@@ -219,19 +236,80 @@ fn build_ui(
     content_overlay.set_child(Some(&stack));
     content_overlay.add_overlay(&field_scrim);
 
-    let content_pane = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    content_pane.append(&content_overlay);
-    content_pane.append(&nixd_banner);
+    let page_area = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    page_area.append(&content_overlay);
+    page_area.append(&nixd_banner);
 
     let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
     paned.set_start_child(Some(&sidebar));
-    paned.set_end_child(Some(&content_pane));
+    paned.set_end_child(Some(&page_area));
     paned.set_position(220);
     paned.set_hexpand(true);
     paned.set_vexpand(true);
     paned.set_resize_start_child(false);
     paned.set_shrink_start_child(false);
     paned.set_shrink_end_child(true);
+
+    let grid_back = nav_button("go-previous-symbolic", "Back", "Go up one level");
+    let grid_top = nav_button("go-home-symbolic", "Top", "Go back to the category list");
+    let grid_all = nav_button(
+        "view-app-grid-symbolic",
+        "All pages",
+        "Show every page without categories",
+    );
+    let grid_title = gtk::Label::builder()
+        .xalign(0.0)
+        .hexpand(true)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .css_classes(["title-3"])
+        .build();
+    let grid_chrome = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    grid_chrome.set_margin_top(8);
+    grid_chrome.set_margin_bottom(8);
+    grid_chrome.set_margin_start(12);
+    grid_chrome.set_margin_end(12);
+    grid_chrome.append(&grid_back);
+    grid_chrome.append(&grid_top);
+    grid_chrome.append(&grid_all);
+    grid_chrome.append(&grid_title);
+
+    let grid_flow = gtk::FlowBox::new();
+    grid_flow.set_selection_mode(gtk::SelectionMode::Single);
+    grid_flow.set_activate_on_single_click(false);
+    grid_flow.set_homogeneous(false);
+    grid_flow.set_halign(gtk::Align::Fill);
+    grid_flow.set_valign(gtk::Align::Start);
+    grid_flow.set_hexpand(true);
+    grid_flow.set_min_children_per_line(2);
+    grid_flow.set_max_children_per_line(8);
+    grid_flow.set_column_spacing(12);
+    grid_flow.set_row_spacing(12);
+    grid_flow.set_margin_top(12);
+    grid_flow.set_margin_bottom(12);
+    grid_flow.set_margin_start(24);
+    grid_flow.set_margin_end(24);
+    let grid_scroller = gtk::ScrolledWindow::builder()
+        .child(&grid_flow)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    let grid_empty = gtk::Label::builder()
+        .label("No matches")
+        .visible(false)
+        .margin_top(24)
+        .css_classes(["dim-label"])
+        .build();
+    let grid_body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    grid_body.set_vexpand(true);
+    grid_body.append(&grid_scroller);
+    grid_body.append(&grid_empty);
+
+    let grid_view = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    grid_view.set_visible(false);
+    grid_view.append(&grid_chrome);
+    grid_view.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    grid_view.append(&grid_body);
 
     let status = gtk::Label::builder()
         .xalign(0.0)
@@ -343,6 +421,7 @@ fn build_ui(
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
     body.append(&paned);
+    body.append(&grid_view);
 
     let toolbar_view = adw::ToolbarView::new();
     toolbar_view.add_top_bar(&header);
@@ -370,6 +449,20 @@ fn build_ui(
         list,
         list_scroll: list_scroll.clone(),
         sidebar_icons_only: Cell::new(false),
+        paned,
+        page_area,
+        grid_view,
+        grid_body,
+        grid_scroller,
+        grid_flow,
+        grid_empty,
+        grid_title,
+        grid_back,
+        grid_top,
+        grid_all,
+        view_mode: Cell::new(view_mode),
+        grid_level: RefCell::new(view::GridLevel::Home),
+        grid_last: RefCell::new(HashMap::new()),
         inputs_list,
         inputs_page,
         inputs_warning,
@@ -403,7 +496,7 @@ fn build_ui(
         descriptor_path,
         descriptor_error: RefCell::new(descriptor_error),
         descriptor_cache: Arc::new(Mutex::new(HashMap::new())),
-        config: RefCell::new(AppConfig::load()),
+        config: RefCell::new(loaded_config),
         base: RefCell::new(String::new()),
         scan: RefCell::new(None),
         targets: RefCell::new(Vec::new()),
@@ -425,13 +518,43 @@ fn build_ui(
         pending_rebuild: Cell::new(false),
         watchers: RefCell::new(Vec::new()),
     });
-    app_state.show_page(inputs::INPUTS_PAGE);
+    {
+        let app = app_state.clone();
+        app_state
+            .grid_back
+            .connect_clicked(move |_| view::back(&app));
+    }
+    {
+        let app = app_state.clone();
+        app_state
+            .grid_top
+            .connect_clicked(move |_| view::home(&app));
+    }
+    {
+        let app = app_state.clone();
+        app_state
+            .grid_all
+            .connect_clicked(move |_| view::all_pages(&app));
+    }
+    {
+        let app = app_state.clone();
+        app_state
+            .grid_flow
+            .connect_child_activated(move |_, child| {
+                view::activate_tile(&app, &child.widget_name())
+            });
+    }
+    view::init_view(&app_state);
+    if view_mode == ViewMode::List {
+        view::show_page(&app_state, inputs::INPUTS_PAGE);
+    }
     {
         let app = app_state.clone();
         sidebar_toggle.connect_toggled(move |button| {
             let icons = button.is_active();
             app.sidebar_icons_only.set(icons);
-            app.list_scroll.set_width_request(if icons { 60 } else { 220 });
+            app.list_scroll
+                .set_width_request(if icons { 60 } else { 220 });
             rebuild_menu_list(&app);
         });
     }
@@ -474,7 +597,7 @@ fn build_ui(
                 app.page_pending.set(false);
                 app.showing_inputs.set(true);
                 app.list.unselect_all();
-                app.show_page(inputs::INPUTS_PAGE);
+                view::show_page(&app, inputs::INPUTS_PAGE);
                 inputs::refresh(&app);
             });
     }
@@ -562,6 +685,7 @@ fn wire(
         app.search.clone().connect_search_changed(move |_| {
             rebuild_menu_list(&app);
             apply_control_filter(&app);
+            view::refresh_search(&app);
         });
     }
     {
@@ -581,7 +705,7 @@ fn wire(
             app.showing_inputs.set(false);
             app.inputs_list.unselect_all();
             ensure_page(&app, name.as_str());
-            app.show_page(name.as_str());
+            view::show_page(&app, name.as_str());
             *app.current_file.borrow_mut() = name.to_string();
             apply_control_filter(&app);
             query_current_page(&app, &app.tx);
@@ -763,11 +887,12 @@ fn ensure_ui(
     tx: &Tx,
     page_pattern: Option<Regex>,
     descriptors_path: Option<String>,
+    view: Option<ViewMode>,
 ) -> Rc<App> {
     if let Some(ui) = slot.borrow().as_ref() {
         return ui.clone();
     }
-    let ui = build_ui(application, tx, page_pattern, descriptors_path);
+    let ui = build_ui(application, tx, page_pattern, descriptors_path, view);
     *slot.borrow_mut() = Some(ui.clone());
     if let Some(path) = populate_flakes(&ui) {
         open_flake(&ui, tx, &path);
@@ -817,8 +942,8 @@ pub fn run(app: &adw::Application) -> glib::ExitCode {
         let tx = tx.clone();
         app.connect_command_line(move |application, command_line| {
             let parsed = cli::LaunchArgs::parse(forwarded_args(command_line.arguments()));
-            let (page_pattern, descriptors_path) = match parsed {
-                Ok(args) => (args.page, args.descriptors),
+            let (page_pattern, descriptors_path, view) = match parsed {
+                Ok(args) => (args.page, args.descriptors, args.view),
                 Err(error) => {
                     eprintln!("nix-settings-gui: {error}");
                     command_line.set_exit_status(2);
@@ -831,7 +956,11 @@ pub fn run(app: &adw::Application) -> glib::ExitCode {
                 &tx,
                 page_pattern.clone(),
                 descriptors_path,
+                view,
             );
+            if let Some(mode) = view {
+                view::set_view_mode(&ui, mode);
+            }
             match page_pattern {
                 Some(pattern) => apply_page_pattern(&ui, &pattern),
                 None => ui.window.present(),
@@ -845,7 +974,7 @@ pub fn run(app: &adw::Application) -> glib::ExitCode {
         let ui = ui.clone();
         let tx = tx.clone();
         app.connect_activate(move |application| {
-            let ui = ensure_ui(application, &ui, &tx, None, None);
+            let ui = ensure_ui(application, &ui, &tx, None, None, None);
             ui.window.present();
         });
     }

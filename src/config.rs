@@ -2,6 +2,44 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// How the settings window presents pages: the menu list, or the category
+/// grid modelled on the Windows 7 control panel.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ViewMode {
+    #[default]
+    List,
+    Categories,
+}
+
+impl ViewMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "list" => Some(Self::List),
+            "categories" | "category" => Some(Self::Categories),
+            _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Categories => "categories",
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ViewMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::parse(&value).unwrap_or_default())
+    }
+}
+
 /// User settings persisted to `~/.config/nix-settings-gui/config.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -23,6 +61,8 @@ pub struct AppConfig {
     pub expand_details_by_default: bool,
     #[serde(default)]
     pub auto_git_sync: bool,
+    #[serde(default)]
+    pub view_mode: ViewMode,
 }
 
 fn default_true() -> bool {
@@ -41,6 +81,7 @@ impl Default for AppConfig {
             reload_dms_on_rebuild: false,
             expand_details_by_default: false,
             auto_git_sync: false,
+            view_mode: ViewMode::List,
         }
     }
 }
@@ -131,6 +172,27 @@ mod tests {
     }
 
     #[test]
+    fn parses_view_mode_names() {
+        assert_eq!(ViewMode::parse("list"), Some(ViewMode::List));
+        assert_eq!(ViewMode::parse(" CATEGORIES "), Some(ViewMode::Categories));
+        assert_eq!(ViewMode::parse("grid"), None);
+        assert_eq!(ViewMode::List.as_str(), "list");
+        assert_eq!(ViewMode::Categories.as_str(), "categories");
+    }
+
+    #[test]
+    fn missing_view_mode_defaults_to_list() {
+        let config: AppConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(config.view_mode, ViewMode::List);
+    }
+
+    #[test]
+    fn unknown_view_mode_falls_back_to_list() {
+        let config: AppConfig = serde_json::from_str(r#"{"view_mode":"grid"}"#).unwrap();
+        assert_eq!(config.view_mode, ViewMode::List);
+    }
+
+    #[test]
     fn round_trips_through_json() {
         let mut config = AppConfig::default();
         config.remember("/tmp/flake");
@@ -140,6 +202,7 @@ mod tests {
         config.reload_dms_on_rebuild = true;
         config.expand_details_by_default = true;
         config.auto_git_sync = true;
+        config.view_mode = ViewMode::Categories;
         let json = serde_json::to_string(&config).unwrap();
         let back: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.flake_path, config.flake_path);
@@ -152,5 +215,6 @@ mod tests {
             config.expand_details_by_default
         );
         assert_eq!(back.auto_git_sync, config.auto_git_sync);
+        assert_eq!(back.view_mode, config.view_mode);
     }
 }

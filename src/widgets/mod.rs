@@ -1,6 +1,8 @@
 #[cfg(feature = "ojuny-widgets")]
 mod bar;
 mod basic;
+#[allow(dead_code)]
+pub(crate) mod category_icon;
 mod context;
 mod cursor_theme;
 mod details;

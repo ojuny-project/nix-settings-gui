@@ -8,13 +8,14 @@ use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, ViewMode};
 use crate::model::Record;
 use crate::nixd::OptionInfo;
 use crate::scan::ScanResult;
 use crate::widgets::{Editor, InfoDetails};
 
 use super::apply::ApplyState;
+use super::view::GridLevel;
 
 pub(super) enum Msg {
     Scanned {
@@ -239,6 +240,20 @@ pub(super) struct App {
     pub(super) list: gtk::ListBox,
     pub(super) list_scroll: gtk::ScrolledWindow,
     pub(super) sidebar_icons_only: Cell<bool>,
+    pub(super) paned: gtk::Paned,
+    pub(super) page_area: gtk::Box,
+    pub(super) grid_view: gtk::Box,
+    pub(super) grid_body: gtk::Box,
+    pub(super) grid_scroller: gtk::ScrolledWindow,
+    pub(super) grid_flow: gtk::FlowBox,
+    pub(super) grid_empty: gtk::Label,
+    pub(super) grid_title: gtk::Label,
+    pub(super) grid_back: gtk::Button,
+    pub(super) grid_top: gtk::Button,
+    pub(super) grid_all: gtk::Button,
+    pub(super) view_mode: Cell<ViewMode>,
+    pub(super) grid_level: RefCell<GridLevel>,
+    pub(super) grid_last: RefCell<HashMap<String, String>>,
     pub(super) inputs_list: gtk::ListBox,
     pub(super) inputs_page: gtk::Box,
     pub(super) inputs_warning: gtk::Image,
@@ -310,18 +325,6 @@ pub(super) struct App {
 }
 
 impl App {
-    /// Show one page by clearing the host and attaching only that page.
-    pub(super) fn show_page(&self, name: &str) {
-        while let Some(child) = self.stack.first_child() {
-            self.stack.remove(&child);
-        }
-        if name == super::inputs::INPUTS_PAGE {
-            self.stack.append(&self.inputs_page);
-        } else if let Some(page) = self.pages.borrow().iter().find(|page| page.file == name) {
-            self.stack.append(&page.root);
-        }
-    }
-
     /// Drop the wallpaper preset result so the next picker rebuild fetches a
     /// fresh set. The generation keeps an older in-flight result from matching.
     pub(super) fn invalidate_wallpaper(&self) {

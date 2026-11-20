@@ -91,9 +91,9 @@ fn finish_scan(
     }
     rebuild_view(app);
     inputs::update_warning(app);
-    if app.showing_inputs.get() {
+    if app.showing_inputs.get() && app.view_mode.get() == crate::config::ViewMode::List {
         inputs::refresh(app);
-        app.show_page(inputs::INPUTS_PAGE);
+        super::view::show_page(app, inputs::INPUTS_PAGE);
     }
     scan_finished(app);
 }

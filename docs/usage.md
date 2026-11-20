@@ -36,6 +36,13 @@ files.
 - The search box filters the menu list and the visible controls. The "system
   only" checkbox narrows everything to the selected host.
 
+With `view_mode = "categories"` in the config file, or `--view categories` on
+the command line, the left list and content pane are replaced by a category
+grid. The home grid lists one tile per category, then Flake Inputs and Nix
+Settings GUI. A single click selects a tile, arrow keys move the selection, and
+Enter or a double click opens it. Back, Top, and All pages sit above the grid.
+The All pages view lists every page and both built-ins without categories.
+
 ## 3. Flake inputs and nixpkgs
 
 The "Flake Inputs" entry in the left pane edits the flake's `inputs` set. It
