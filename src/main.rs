@@ -21,6 +21,7 @@ mod metadata;
 #[allow(dead_code)]
 mod model;
 mod monitor_detect;
+mod mounts;
 mod nixd;
 mod nixpkgs;
 mod passwords;
