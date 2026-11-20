@@ -72,7 +72,7 @@ fn candidate_labels(candidates: &[detect::MountCandidate]) -> Vec<String> {
     candidates
         .iter()
         .map(|candidate| {
-            let size = candidate.size.as_deref().unwrap_or("?");
+            let size = detect::format_size(candidate.size);
             let model = candidate.model.as_deref().unwrap_or("");
             let uuid = candidate.uuid.as_deref().unwrap_or("no uuid");
             format!(
@@ -167,7 +167,7 @@ fn disk_labels(disks: &[detect::DiskCandidate]) -> Vec<String> {
     disks
         .iter()
         .map(|disk| {
-            let size = disk.size.as_deref().unwrap_or("?");
+            let size = detect::format_size(disk.size);
             let model = disk.model.as_deref().unwrap_or("");
             format!("{}  {}  {}", disk.name, size, model)
                 .split_whitespace()

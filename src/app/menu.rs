@@ -43,6 +43,7 @@ pub(super) fn rebuild_view(app: &Rc<App>) {
     if !current.is_empty() {
         select_file(app, &current);
     }
+    super::view::refresh_after_scan(app);
 }
 
 fn choose_current_page(app: &Rc<App>) {
@@ -56,12 +57,15 @@ fn choose_current_page(app: &Rc<App>) {
             if pattern_matches_inputs(pattern) {
                 app.showing_inputs.set(true);
                 app.current_file.borrow_mut().clear();
+                super::view::set_page_level(app, super::inputs::INPUTS_PAGE);
             } else if let Some(file) = select_menu_file(&menus, pattern) {
                 app.showing_inputs.set(false);
+                super::view::set_page_level(app, &file);
                 *app.current_file.borrow_mut() = file;
             } else if !page_is_open(app) {
                 app.showing_inputs.set(true);
                 app.current_file.borrow_mut().clear();
+                super::view::set_page_level(app, super::inputs::INPUTS_PAGE);
             }
             return;
         }
@@ -102,11 +106,12 @@ pub(super) fn apply_page_pattern(app: &Rc<App>, pattern: &regex::Regex) {
         app.showing_inputs.set(false);
         app.inputs_list.unselect_all();
         ensure_page(app, &file);
-        app.show_page(&file);
+        super::view::show_page(app, &file);
         *app.current_file.borrow_mut() = file.clone();
         select_file(app, &file);
         super::controls::apply_control_filter(app);
         super::enrich::query_current_page(app, &app.tx);
+        super::view::focus_page(app, &file);
     } else if !page_is_open(app) {
         show_inputs_page(app);
     }
@@ -118,7 +123,8 @@ fn show_inputs_page(app: &Rc<App>) {
     app.current_file.borrow_mut().clear();
     app.list.unselect_all();
     super::inputs::refresh(app);
-    app.show_page(super::inputs::INPUTS_PAGE);
+    super::view::show_page(app, super::inputs::INPUTS_PAGE);
+    super::view::focus_page(app, super::inputs::INPUTS_PAGE);
 }
 
 fn visible_menus(app: &Rc<App>) -> Vec<crate::model::MenuModel> {
@@ -148,10 +154,34 @@ fn menu_cmp(a: &MenuModel, b: &MenuModel) -> Ordering {
         .then_with(|| a.display_name().cmp(&b.display_name()))
 }
 
-fn sorted_menus(app: &Rc<App>) -> Vec<MenuModel> {
+pub(super) fn sorted_menus(app: &Rc<App>) -> Vec<MenuModel> {
     let mut menus = visible_menus(app);
     menus.sort_by(menu_cmp);
     menus
+}
+
+/// The visible pages grouped under their `@menu category` string, in the same
+/// category and page order the sidebar uses. Pages without a category share the
+/// `Other` group so the grid can still reach them.
+pub(super) fn category_groups(app: &Rc<App>) -> Vec<(String, Vec<MenuModel>)> {
+    group_menus(sorted_menus(app))
+}
+
+/// Group already sorted menus by category, preserving the order of first
+/// appearance. An empty or missing category becomes `Other`.
+fn group_menus(menus: Vec<MenuModel>) -> Vec<(String, Vec<MenuModel>)> {
+    let mut groups: Vec<(String, Vec<MenuModel>)> = Vec::new();
+    for menu in menus {
+        let category = match menu.spec.category.clone() {
+            Some(category) if !category.is_empty() => category,
+            _ => "Other".to_string(),
+        };
+        match groups.iter_mut().find(|(name, _)| *name == category) {
+            Some((_, grouped)) => grouped.push(menu),
+            None => groups.push((category, vec![menu])),
+        }
+    }
+    groups
 }
 
 fn select_menu_file(menus: &[MenuModel], pattern: &regex::Regex) -> Option<String> {
@@ -161,7 +191,7 @@ fn select_menu_file(menus: &[MenuModel], pattern: &regex::Regex) -> Option<Strin
         .map(|menu| menu.file.clone())
 }
 
-fn menu_matches(menu: &crate::model::MenuModel, query: &str) -> bool {
+pub(super) fn menu_matches(menu: &crate::model::MenuModel, query: &str) -> bool {
     if query.is_empty() {
         return true;
     }
@@ -175,7 +205,7 @@ fn menu_matches(menu: &crate::model::MenuModel, query: &str) -> bool {
         .any(|record| super::controls::record_matches_query(record, query))
 }
 
-fn resolve_menu_icon(icon: Option<&str>) -> Option<String> {
+pub(super) fn resolve_menu_icon(icon: Option<&str>) -> Option<String> {
     let display = gtk::gdk::Display::default()?;
     let theme = gtk::IconTheme::for_display(&display);
     crate::widgets::menu_icon::pick_icon_name(|name| theme.has_icon(name), icon)
@@ -271,7 +301,7 @@ fn rebuild_pages(app: &Rc<App>) {
             let file = menu.file.clone();
             app.pages.replace(pages);
             app.inputs_list.unselect_all();
-            app.show_page(&file);
+            super::view::show_page(app, &file);
             *app.current_file.borrow_mut() = file.clone();
             select_file(app, &file);
         } else {
@@ -607,6 +637,38 @@ mod tests {
         menus.sort_by(menu_cmp);
         let names: Vec<_> = menus.iter().map(MenuModel::display_name).collect();
         assert_eq!(names, ["System", "User", "Bar"]);
+    }
+
+    #[test]
+    fn groups_keep_first_seen_order_and_member_order() {
+        let menus = vec![
+            menu("01-Users", 10, "User", "user.nix"),
+            menu("02-Core", 10, "Bar", "bar.nix"),
+            menu("01-Users", 20, "Shared", "shared.nix"),
+        ];
+        let groups = group_menus(menus);
+        let names: Vec<_> = groups.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["01-Users", "02-Core"]);
+        let members: Vec<_> = groups[0].1.iter().map(MenuModel::display_name).collect();
+        assert_eq!(members, ["User", "Shared"]);
+    }
+
+    #[test]
+    fn uncategorized_pages_share_the_other_group() {
+        let menus = vec![
+            menu("", 10, "One", "one.nix"),
+            menu("", 20, "Two", "two.nix"),
+            menu("Patches", 10, "Dev", "dev.nix"),
+        ];
+        let groups = group_menus(menus);
+        assert_eq!(groups[0].0, "Other");
+        assert_eq!(groups[0].1.len(), 2);
+        assert_eq!(groups[1].0, "Patches");
+    }
+
+    #[test]
+    fn empty_input_makes_no_groups() {
+        assert!(group_menus(Vec::new()).is_empty());
     }
 
     #[test]

@@ -45,10 +45,12 @@ Run it without installing:
 nix run github:ojuny-project/nix-settings-gui
 ```
 
-The settings window opens. Launch arguments are `--page <regex>` and
-`--descriptors <file>`. `--page` matches visible menus and the built-in
-`Flake Inputs` page. A second launch raises the existing window and applies its
-`--page` value. A pattern that matches neither keeps the open page, or opens
+The settings window opens. Launch arguments are `--page <regex>`,
+`--view <list|categories>`, and `--descriptors <file>`. `--page` matches
+visible menus and the built-in `Flake Inputs` page. `--view` selects the menu
+list or the category grid and overrides the `view_mode` config setting. A
+second launch raises the existing window and applies its `--page` and `--view`
+values. A pattern that matches neither keeps the open page, or opens
 `Flake Inputs` when no menu is open.
 
 The flake also builds `nix-settings-backend`, a local JSON-RPC endpoint for

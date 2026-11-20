@@ -11,7 +11,7 @@ use crate::metadata::{self, Target};
 use crate::model::InsertMarker;
 use crate::widgets;
 
-use super::menu::{open_flake, strip_add_prefix};
+use super::menu::strip_add_prefix;
 use super::pump::{show_error, spawn};
 use super::state::{App, Msg, Tx};
 
@@ -28,62 +28,14 @@ pub(super) fn open_configure(app: &Rc<App>) {
     dialog.add_button("Cancel", gtk::ResponseType::Cancel);
     dialog.add_button("Save", gtk::ResponseType::Accept);
 
-    let grid = gtk::Grid::builder()
-        .row_spacing(6)
-        .column_spacing(8)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-
-    let config = app.config.borrow().clone();
-    let flake_entry = gtk::Entry::new();
-    flake_entry.set_text(config.flake_path.as_deref().unwrap_or(""));
-    flake_entry.set_hexpand(true);
-    let flake_browse = gtk::Button::with_label("Browse...");
-    {
-        let entry = flake_entry.clone();
-        let window = app.window.clone();
-        flake_browse.connect_clicked(move |_| select_folder(&window, &entry));
-    }
-    let flake_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    flake_row.append(&flake_entry);
-    flake_row.append(&flake_browse);
-    let terminal_entry = gtk::Entry::new();
-    terminal_entry.set_text(config.terminal_command.as_deref().unwrap_or(""));
-    terminal_entry.set_hexpand(true);
-    let rebuild_entry = gtk::Entry::new();
-    rebuild_entry.set_text(config.rebuild_command.as_deref().unwrap_or(""));
-    rebuild_entry.set_hexpand(true);
-
-    grid.attach(&gtk::Label::new(Some("Flake path")), 0, 0, 1, 1);
-    grid.attach(&flake_row, 1, 0, 1, 1);
-    grid.attach(&gtk::Label::new(Some("Terminal command")), 0, 1, 1, 1);
-    grid.attach(&terminal_entry, 1, 1, 1, 1);
-    grid.attach(&gtk::Label::new(Some("Rebuild command")), 0, 2, 1, 1);
-    grid.attach(&rebuild_entry, 1, 2, 1, 1);
-
-    dialog.content_area().append(&grid);
+    let form = Rc::new(super::configure::ConfigureForm::new(app));
+    dialog.content_area().append(form.root());
 
     {
         let app = app.clone();
         dialog.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
-                let flake = flake_entry.text().to_string();
-                {
-                    let mut config = app.config.borrow_mut();
-                    config.terminal_command = non_empty(terminal_entry.text().to_string());
-                    config.rebuild_command = non_empty(rebuild_entry.text().to_string());
-                    if !flake.trim().is_empty() {
-                        config.remember(flake.trim());
-                    }
-                }
-                let _ = app.config.borrow().save();
-                if !flake.trim().is_empty() {
-                    let tx = app.tx.clone();
-                    open_flake(&app, &tx, flake.trim());
-                }
+                form.apply(&app);
             }
             dialog.close();
         });
@@ -184,7 +136,7 @@ fn open_password_dialog(app: &Rc<App>, done: Box<dyn FnOnce(Option<String>)>) {
     dialog.present();
 }
 
-fn non_empty(text: String) -> Option<String> {
+pub(super) fn non_empty(text: String) -> Option<String> {
     if text.trim().is_empty() {
         None
     } else {
@@ -193,7 +145,7 @@ fn non_empty(text: String) -> Option<String> {
 }
 
 /// Open a folder chooser and write the chosen path into `entry`.
-fn select_folder(parent: &impl IsA<gtk::Window>, entry: &gtk::Entry) {
+pub(super) fn select_folder(parent: &impl IsA<gtk::Window>, entry: &gtk::Entry) {
     let dialog = gtk::FileDialog::builder()
         .title("Select folder")
         .modal(true)

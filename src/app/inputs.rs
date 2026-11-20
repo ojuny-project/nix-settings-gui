@@ -22,21 +22,23 @@ use crate::nixpkgs as nixpkgs_model;
 pub(super) const INPUTS_PAGE: &str = "__flake_inputs";
 pub(super) const INPUTS_LABEL: &str = "Flake Inputs";
 
-pub(super) fn flake_icon_image() -> Option<gtk::Image> {
+pub(super) fn flake_icon_name() -> Option<String> {
     let display = gtk::gdk::Display::default()?;
     let theme = gtk::IconTheme::for_display(&display);
-    for name in [
+    [
         "nix-snowflake-symbolic",
         "nix-symbolic",
         "nix",
         "application-x-nix",
         "package-x-generic-symbolic",
-    ] {
-        if theme.has_icon(name) {
-            return Some(gtk::Image::from_icon_name(name));
-        }
-    }
-    None
+    ]
+    .into_iter()
+    .find(|name| theme.has_icon(name))
+    .map(str::to_string)
+}
+
+pub(super) fn flake_icon_image() -> Option<gtk::Image> {
+    flake_icon_name().map(|name| gtk::Image::from_icon_name(&name))
 }
 
 pub(super) fn flake_file(app: &Rc<App>) -> String {

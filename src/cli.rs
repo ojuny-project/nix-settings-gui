@@ -1,5 +1,7 @@
 use regex::Regex;
 
+use crate::config::ViewMode;
+
 pub const HELP: &str = "\
 Usage: nix-settings-gui [OPTIONS]
 
@@ -8,15 +10,21 @@ Options:
                         <regex>; \"Flake Inputs\" opens the built-in page.
                         A miss keeps the open menu, or opens Flake Inputs
                         when no menu is open.
+  --view <mode>         Render pages as a list or as a category grid.
+                        <mode> is \"list\" or \"categories\". Overrides the
+                        view_mode setting in the config file.
   --descriptors <file>  Load descriptor sidecar definitions from <file>
   -h, --help            Print this help and exit
 
-A second launch raises the existing window and applies its --page value.";
+A second launch raises the existing window and applies its --page and
+--view values.";
 
 pub struct LaunchArgs {
     pub page: Option<Regex>,
     /// Path to a descriptor sidecar, from `--descriptors <file>`.
     pub descriptors: Option<String>,
+    /// View override, from `--view <mode>`.
+    pub view: Option<ViewMode>,
     /// Whether `--help` or `-h` was passed.
     pub help: bool,
 }
@@ -25,6 +33,7 @@ impl LaunchArgs {
     pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Self, String> {
         let mut page = None;
         let mut descriptors = None;
+        let mut view = None;
         let mut help = false;
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
@@ -40,6 +49,11 @@ impl LaunchArgs {
                 descriptors = Some(value);
             } else if let Some(value) = arg.strip_prefix("--descriptors=") {
                 descriptors = Some(value.to_string());
+            } else if arg == "--view" {
+                let value = args.next().ok_or("--view requires a mode")?;
+                view = Some(parse_view(&value)?);
+            } else if let Some(value) = arg.strip_prefix("--view=") {
+                view = Some(parse_view(value)?);
             } else {
                 return Err(format!("unknown argument: {arg}"));
             }
@@ -48,6 +62,7 @@ impl LaunchArgs {
             return Ok(Self {
                 page: None,
                 descriptors: None,
+                view: None,
                 help: true,
             });
         }
@@ -60,9 +75,15 @@ impl LaunchArgs {
         Ok(Self {
             page,
             descriptors,
+            view,
             help,
         })
     }
+}
+
+fn parse_view(value: &str) -> Result<ViewMode, String> {
+    ViewMode::parse(value)
+        .ok_or_else(|| format!("invalid --view value: {value} (expected list or categories)"))
 }
 
 #[cfg(test)]
@@ -98,9 +119,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_view_in_both_forms() {
+        assert_eq!(
+            parse(&["--view", "categories"]).unwrap().view,
+            Some(ViewMode::Categories)
+        );
+        assert_eq!(parse(&["--view=list"]).unwrap().view, Some(ViewMode::List));
+    }
+
+    #[test]
+    fn rejects_invalid_view() {
+        assert!(parse(&["--view", "grid"]).is_err());
+    }
+
+    #[test]
     fn rejects_missing_page_value() {
         assert!(parse(&["--page"]).is_err());
         assert!(parse(&["--descriptors"]).is_err());
+        assert!(parse(&["--view"]).is_err());
     }
 
     #[test]
@@ -125,6 +161,7 @@ mod tests {
     fn help_documents_pages_and_single_instance() {
         assert!(HELP.contains("visible menu"));
         assert!(HELP.contains("Flake Inputs"));
+        assert!(HELP.contains("--view"));
         assert!(HELP.contains("second launch raises"));
     }
 }
