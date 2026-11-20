@@ -312,8 +312,13 @@ its own interface, such as a Dux Modular Shell or mango IPC call.
 | `users` | User account list with passwords, groups, SSH keys, and extras | name-keyed attribute set of user options |
 | `facter` | Detected hardware state plus a profile dropdown | profile string |
 | `docker` | Declarative container list with add, edit, and remove | container-name-keyed attribute set |
+| `mounts` | Editable `fileSystems` list with add, edit, and remove | mountpoint-keyed attribute set |
 | `secureboot` | Live firmware state, a Lanzaboote toggle, and a guided setup flow | `true` / `false` |
 | `raw`       | Monospace Nix editor | verbatim value |
+
+The `mounts` widget attaches to a mountpoint-keyed `fileSystems` attribute set.
+Each row edits `device`, `fsType`, `options`, and `neededForBoot`. Unknown
+fields are preserved, and a save never drops a field the widget does not model.
 
 ### Submodules
 
@@ -409,6 +414,7 @@ shape.
 | `users` | `users.users` | a name-keyed attribute set of accounts. Edits `description`, `hashedPassword`, `extraGroups`, `uid`, `shell`, `openssh.authorizedKeys.keys`, and an extra-options field. `wheel` is a separate sudo toggle. The add and remove actions keep at least one normal account with sudo and a password. |
 | `facter` | a profile string option, e.g. `ojuny.hardware.profile` | Finds the first `facter.json` in the flake, falling back to `modules/facter.json`, or `reportPath`. Shows the detected model, profile, coverage state, effective GPU layout, GPU source, and whether the profile manages the GPU. `profileCatalog` replaces the builtin profile table. The dropdown writes the normal string assignment. A missing report leaves the dropdown usable with empty detection details. |
 | `docker` | a name-keyed container attribute set, e.g. `ojuny.patch.docker.containers` or `virtualisation.oci-containers.containers` | Defaults to `{ image; ports; volumes; environment; autoStart; }`. `imageField`, `portsField`, `volumesField`, `environmentField`, and `autoStartField` replace those names. Add, edit, and remove one container at a time; `environment` is edited as key/value text rows; absent fields stay absent and unknown fields are preserved. |
+| `mounts` | a mountpoint-keyed `fileSystems` attribute set, e.g. `fileSystems` or a user-owned subset | Each row edits `device`, `fsType`, `options`, and `neededForBoot`. Rows can be added and removed, and fields the widget does not model are preserved. A mountpoint must be absolute, must not be a duplicate in the set, and must not resolve under `/`, `/nix`, `/boot`, `/efi`, `/bin`, `/lib`, `/var`, or `/etc`. |
 | `secureboot` | `boot.lanzaboote.enable` | Shows live UEFI state from `bootctl` and `sbctl`, edits the Lanzaboote toggle, and opens a guided setup flow. The flow adds the `lanzaboote` flake input, writes the remaining Lanzaboote options, and runs key setup. Existing keys are kept unless the user explicitly removes them. |
 
 A `profileCatalog` file is a JSON object with `profiles`, `gpu_profiles`, and

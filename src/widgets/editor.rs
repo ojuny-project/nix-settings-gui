@@ -7,6 +7,9 @@ use super::keybinds::{connect_keybind_row, keybind_rows_unchanged, keybinds_nix,
 #[cfg(feature = "ojuny-widgets")]
 use super::menu::{connect_menu_row, menu_rows_nix, menu_rows_unchanged, MenuRow};
 use super::monitors::{connect_monitor_row, monitor_row_unchanged, monitors_nix, MonitorRow};
+use super::mounts::{
+    mounts_nix, mounts_unchanged, mounts_validation_error, MountsRow,
+};
 use super::nix::{
     canonical_list, canonical_module_list, entry_text, expr_literal, number_literal, package_items,
     package_literal, parse_string_literal, path_literal, quote, serialize_modules, string_literal,
@@ -165,6 +168,12 @@ pub enum Editor {
         on_change: ChangeHook,
         orig_count: usize,
     },
+    Mounts {
+        root: gtk::Box,
+        rows: Rc<RefCell<Vec<MountsRow>>>,
+        on_change: ChangeHook,
+        orig_count: usize,
+    },
     SecureBoot {
         root: gtk::Box,
         toggle: gtk::Switch,
@@ -212,6 +221,7 @@ impl Editor {
             Editor::Users { root, .. } => root.clone().upcast(),
             Editor::Facter { root, .. } => root.clone().upcast(),
             Editor::Docker { root, .. } => root.clone().upcast(),
+            Editor::Mounts { root, .. } => root.clone().upcast(),
             Editor::SecureBoot { root, .. } => root.clone().upcast(),
             Editor::Raw { root, .. } => root.clone().upcast(),
         }
@@ -331,6 +341,7 @@ impl Editor {
                 .cloned()
                 .unwrap_or_else(|| quote("auto")),
             Editor::Docker { .. } => docker_nix(self),
+            Editor::Mounts { .. } => mounts_nix(self),
             Editor::SecureBoot { toggle, .. } => {
                 if toggle.is_active() { "true" } else { "false" }.to_string()
             }
@@ -446,6 +457,9 @@ impl Editor {
             Editor::Docker {
                 rows, orig_count, ..
             } => docker_unchanged(rows, *orig_count),
+            Editor::Mounts {
+                rows, orig_count, ..
+            } => mounts_unchanged(rows, *orig_count),
             Editor::SecureBoot { toggle, .. } => toggle.is_active() == truthy(original),
             Editor::Grid { state, .. } => {
                 grid_unchanged(state)
@@ -479,6 +493,7 @@ impl Editor {
                     None
                 }
             }
+            Editor::Mounts { rows, .. } => mounts_validation_error(rows),
             _ => None,
         }
     }
@@ -671,6 +686,9 @@ impl Editor {
                 combo.connect_selected_notify(move |_| update());
             }
             Editor::Docker { on_change, .. } => {
+                *on_change.borrow_mut() = Some(update.clone());
+            }
+            Editor::Mounts { on_change, .. } => {
                 *on_change.borrow_mut() = Some(update.clone());
             }
             Editor::SecureBoot { toggle, .. } => {

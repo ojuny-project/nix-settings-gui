@@ -319,6 +319,7 @@ pub fn literal_for_widget(widget: WidgetKind, value: &str) -> String {
         | WidgetKind::Bar
         | WidgetKind::Dock
         | WidgetKind::Docker
+        | WidgetKind::Mounts
         | WidgetKind::GridConfiguration => expr_literal(value),
     }
 }

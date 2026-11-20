@@ -98,7 +98,11 @@ fn serialize_row(row: &MountRow) -> String {
             .filter(|option| !option.is_empty())
             .map(|option| quote(option))
             .collect();
-        fields.push(format!("options = [ {} ];", options.join(" ")));
+        if options.is_empty() {
+            fields.push("options = [ ];".to_string());
+        } else {
+            fields.push(format!("options = [ {} ];", options.join(" ")));
+        }
     }
     if row.needed_for_boot {
         fields.push("neededForBoot = true;".to_string());
@@ -162,7 +166,7 @@ mod tests {
             r#"{ "/mnt/x" = { device = "/dev/sda1"; fsType = "ext4"; options = [ ]; }; }"#,
         );
         let serialized = serialize_file_systems(&rows);
-        assert!(serialized.contains("options = [  ];"), "{serialized}");
+        assert!(serialized.contains("options = [ ];"), "{serialized}");
     }
 
     #[test]

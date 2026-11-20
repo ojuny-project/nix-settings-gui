@@ -20,6 +20,7 @@ pub mod flake_ref;
 pub mod flake_update;
 pub mod metadata;
 pub mod model;
+pub mod mounts;
 pub mod monitor_detect;
 pub mod nixd;
 pub mod nixpkgs;

@@ -5,6 +5,7 @@
 
 pub mod detect;
 pub mod fs;
+pub mod migrate;
 pub mod paths;
 pub mod row;
 

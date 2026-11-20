@@ -19,6 +19,7 @@ use super::keybinds::build_keybinds;
 use super::menu::build_menu;
 use super::module_list::build_module_list;
 use super::monitors::build_monitors;
+use super::mounts::build_mounts;
 use super::nix::unwrap_modifiers;
 use super::secureboot::build_secureboot;
 use super::style_choice::PackageBinding;
@@ -150,6 +151,7 @@ fn build_editor(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> 
         WidgetKind::Users => build_users(record, ctx),
         WidgetKind::Facter => build_facter(record, type_str, ctx),
         WidgetKind::Docker => build_docker(record),
+        WidgetKind::Mounts => build_mounts(record, ctx),
         WidgetKind::SecureBoot => build_secureboot(record, ctx),
         WidgetKind::Raw => {
             let (view, root) = build_raw(value_text, spec);
@@ -382,6 +384,7 @@ mod tests {
         assert_eq!(WidgetKind::parse("dock"), Some(WidgetKind::Dock));
         assert_eq!(WidgetKind::parse("facter"), Some(WidgetKind::Facter));
         assert_eq!(WidgetKind::parse("docker"), Some(WidgetKind::Docker));
+        assert_eq!(WidgetKind::parse("mounts"), Some(WidgetKind::Mounts));
         assert_eq!(WidgetKind::parse("font"), Some(WidgetKind::Font));
         assert_eq!(WidgetKind::parse("icon-theme"), Some(WidgetKind::IconTheme));
         assert_eq!(

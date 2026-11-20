@@ -76,6 +76,10 @@ pub type SecureBootWrite =
 /// Runs privileged setup commands in the configured terminal.
 pub type SecureBootRun = Rc<dyn Fn(&[String]) -> Result<(), String>>;
 
+/// Runs a command in the configured terminal, where sudo can prompt. Elevated
+/// privileges stay in the terminal and outside the app.
+pub type TerminalRun = Rc<dyn Fn(&[String]) -> Result<(), String>>;
+
 /// Runs privileged setup commands through pkexec and returns their output.
 pub type SecureBootExec = Rc<dyn Fn(Vec<String>, Box<dyn FnOnce(Result<String, String>)>)>;
 
@@ -151,6 +155,9 @@ pub struct BuildContext {
     pub secureboot_write: Option<SecureBootWrite>,
     /// Runs privileged Secure Boot commands.
     pub secureboot_run: Option<SecureBootRun>,
+    /// Runs a command in the configured terminal, used by interactive tools
+    /// such as cfdisk and mkfs.
+    pub terminal_run: Option<TerminalRun>,
     /// Runs privileged Secure Boot commands and captures the result.
     pub secureboot_exec: Option<SecureBootExec>,
     /// Starts the configured rebuild.

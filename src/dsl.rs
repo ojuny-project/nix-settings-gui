@@ -293,6 +293,7 @@ pub enum WidgetKind {
     Facter,
     Docker,
     SecureBoot,
+    Mounts,
     Raw,
 }
 
@@ -334,6 +335,7 @@ impl WidgetKind {
             "facter" => Self::Facter,
             "docker" => Self::Docker,
             "secureboot" | "secure-boot" => Self::SecureBoot,
+            "mounts" | "mount" => Self::Mounts,
             "raw" => Self::Raw,
             _ => return None,
         })
@@ -1071,6 +1073,8 @@ mod tests {
         assert_eq!(WidgetKind::parse("users"), Some(WidgetKind::Users));
         assert_eq!(WidgetKind::parse("facter"), Some(WidgetKind::Facter));
         assert_eq!(WidgetKind::parse("docker"), Some(WidgetKind::Docker));
+        assert_eq!(WidgetKind::parse("mounts"), Some(WidgetKind::Mounts));
+        assert_eq!(WidgetKind::parse("mount"), Some(WidgetKind::Mounts));
         assert_eq!(WidgetKind::parse("font"), Some(WidgetKind::Font));
         assert_eq!(WidgetKind::parse("icon-theme"), Some(WidgetKind::IconTheme));
         assert_eq!(

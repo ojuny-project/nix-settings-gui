@@ -1,5 +1,7 @@
 //! Mountpoint guards shared by the widget and its tests.
 
+use std::os::unix::fs::MetadataExt;
+
 /// Paths a user mount may never cover.
 pub const PROTECTED: &[&str] = &["/", "/nix", "/boot", "/efi", "/bin", "/lib", "/var", "/etc"];
 
@@ -59,6 +61,66 @@ fn protected_normalized(normalized: &str) -> bool {
         })
 }
 
+/// Why a target may or may not be used for a new mount.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetState {
+    Missing,
+    Empty,
+    UserOwned,
+    Mounted,
+}
+
+/// Check a mountpoint against the protected list and the migration rule.
+///
+/// A missing or empty directory is fine. A non-empty directory is allowed only
+/// when the current user owns it, so a migration can run without elevation.
+/// A root-owned non-empty directory is rejected, which also covers system
+/// directories that are not on the protected list.
+pub fn check_target(path: &str) -> Result<TargetState, String> {
+    let Some(normalized) = normalize(path) else {
+        return Err(format!("{path} is not an absolute path"));
+    };
+    if is_protected_resolved(&normalized) {
+        return Err(format!(
+            "{normalized} is a protected path and cannot be mounted over"
+        ));
+    }
+    let metadata = match std::fs::metadata(&normalized) {
+        Ok(metadata) => metadata,
+        Err(_) => return Ok(TargetState::Missing),
+    };
+    if !metadata.is_dir() {
+        return Err(format!("{normalized} is not a directory"));
+    }
+    if is_mountpoint(&normalized) {
+        return Ok(TargetState::Mounted);
+    }
+    let mut entries = std::fs::read_dir(&normalized)
+        .map_err(|error| format!("cannot read {normalized}: {error}"))?;
+    if entries.next().is_none() {
+        return Ok(TargetState::Empty);
+    }
+    if metadata.uid() == unsafe { libc::geteuid() } {
+        Ok(TargetState::UserOwned)
+    } else {
+        Err(format!(
+            "{normalized} is not empty and is not owned by the current user; a mount there would need elevated privileges to migrate"
+        ))
+    }
+}
+
+fn is_mountpoint(path: &str) -> bool {
+    let Ok(mountinfo) = std::fs::read_to_string("/proc/self/mountinfo") else {
+        return false;
+    };
+    mountinfo.lines().any(|line| {
+        line.split_whitespace()
+            .nth(4)
+            .map(|mount| mount == path)
+            .unwrap_or(false)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +169,25 @@ mod tests {
         assert!(is_protected_resolved(&target), "{target}");
         let _ = std::fs::remove_file(&link);
         let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn target_rules_follow_ownership() {
+        let base = std::env::temp_dir().join(format!("nsg-target-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("temp dir");
+        let path = base.to_string_lossy().to_string();
+        assert_eq!(check_target(&path), Ok(TargetState::Empty));
+        let file = base.join("data");
+        std::fs::write(&file, b"x").expect("write");
+        assert_eq!(check_target(&path), Ok(TargetState::UserOwned));
+        std::fs::remove_file(&file).expect("remove file");
+        std::fs::remove_dir(&base).expect("remove dir");
+        assert_eq!(
+            check_target("/mnt/nsg-definitely-missing"),
+            Ok(TargetState::Missing)
+        );
+        assert!(check_target("/var").is_err());
+        assert!(check_target("/nix/store").is_err());
     }
 }

@@ -203,7 +203,7 @@ can be resolved. The special name `"all"` in a `systems` list matches every host
 
 Bespoke controls (`keybinds`, `monitors`, `theme`, `wallpaper`, `font`,
 `icon-theme`, `cursor-theme`, `menu`, `plugins`, `bar`, `dock`, `users`,
-`facter`, `docker`, `secureboot`) render a configuration-specific UI for a
+`facter`, `docker`, `secureboot`, `mounts`) render a configuration-specific UI for a
 single option, with their own add, remove, and reorder actions. The generic
 controls (`keybinds`, `wallpaper`, `facter`, `docker`, and
 `grid-configuration`) take their schema from flat `@option` directives or from
@@ -266,6 +266,27 @@ existing `imports` list and `environment.systemPackages` list, replaces existing
 rest after the attached option. The result is parse-checked and formatted by
 `edit.rs` before anything is written. Privileged steps run through the
 configured terminal command, so the app never sees the sudo password.
+
+The `mounts` control edits a mountpoint-keyed `fileSystems` attribute set. Each
+row edits the device, filesystem type, options, and `neededForBoot`, and rows
+can be added and removed. A save rewrites the whole literal, keeps fields the
+control does not model, and refuses a row whose mountpoint is relative, a
+duplicate, or resolves under `/`, `/nix`, `/boot`, `/efi`, `/bin`, `/lib`,
+`/var`, or `/etc`. A detected-disks picker lists internal partitions only and fills a new row with
+the filesystem's default options. When the type needs an owner mapping, a
+permission dialog asks what the owner, the group and everyone else may do, and
+writes the matching umask. Automount all adds one row per candidate under
+`/mnt/<name>`. A separate disk picker opens `cfdisk` through the configured
+terminal with `sudo`, and never lists the disk that carries `/`, `/boot`,
+`/nix` or `/efi`. A non-empty target is accepted only when the current user
+owns it, so migration never needs elevation. A second picker lists unformatted
+partitions and opens a filesystem chooser that runs mkfs through the same
+terminal. When a row's target is non-empty and user-owned, the row offers
+Migrate existing contents, which copies, verifies, moves the original aside,
+mounts the new filesystem and leaves `<target>.old` for deletion after a
+successful boot. Each row has nofail and read-only switches; fsck is written as
+false for ntfs and exfat, whose helpers are not guaranteed in the boot
+environment.
 
 Bar and dock editors load disabled entries and show an enable switch on each
 row. Bar sections support moving a widget between left, center, and right by
