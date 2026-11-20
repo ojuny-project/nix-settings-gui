@@ -156,6 +156,8 @@ launch that raises the open window.
   tiles the same way they filter the menu list.
 - The Nix Settings GUI tile opens an inline page with the Configure form and
   the runtime preference switches.
+- The Configure form's GUI style control selects List or Categories and writes
+  `view_mode`. Changing it takes effect the next time the application starts.
 
 ## 2. Bottom bar
 
@@ -347,7 +349,7 @@ Stored in `~/.config/nix-settings-gui/config.json`:
 | `reload_mango_on_rebuild` | Append the mango reload command after a successful rebuild. |
 | `reload_dms_on_rebuild` | Append the DMS reload command after a successful rebuild. |
 | `auto_git_sync`    | Pull on open; offer a commit and push after Save. |
-| `view_mode`        | `list` or `categories` presentation. Defaults to `list`. |
+| `view_mode`        | `list` or `categories` presentation. Defaults to `list`. A change applies on the next start. |
 
 The runtime preferences `live_apply`, `expand_details_by_default`,
 `reload_mango_on_rebuild`, `reload_dms_on_rebuild`, and `auto_git_sync` are

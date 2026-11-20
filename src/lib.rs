@@ -9,6 +9,7 @@
 #![allow(deprecated)]
 
 pub mod apply;
+pub mod config;
 pub mod descriptors;
 pub mod dsl;
 pub mod edit;

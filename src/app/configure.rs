@@ -5,6 +5,8 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 
+use crate::config::ViewMode;
+
 use super::dialogs::{non_empty, select_folder};
 use super::menu::open_flake;
 use super::state::App;
@@ -14,6 +16,7 @@ pub(super) struct ConfigureForm {
     flake_entry: gtk::Entry,
     terminal_entry: gtk::Entry,
     rebuild_entry: gtk::Entry,
+    style_picker: gtk::DropDown,
 }
 
 impl ConfigureForm {
@@ -54,6 +57,21 @@ impl ConfigureForm {
         grid.attach(&gtk::Label::new(Some("Rebuild command")), 0, 2, 1, 1);
         grid.attach(&rebuild_entry, 1, 2, 1, 1);
 
+        let style_picker = gtk::DropDown::from_strings(&["List", "Categories"]);
+        style_picker.set_selected(style_index(config.view_mode));
+        style_picker.set_halign(gtk::Align::Start);
+        let style_note = gtk::Label::builder()
+            .label("Requires restarting nix-settings-gui to apply.")
+            .xalign(0.0)
+            .wrap(true)
+            .css_classes(["dim-label", "caption"])
+            .build();
+        let style_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        style_box.append(&style_picker);
+        style_box.append(&style_note);
+        grid.attach(&gtk::Label::new(Some("GUI style")), 0, 3, 1, 1);
+        grid.attach(&style_box, 1, 3, 1, 1);
+
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.append(&grid);
         Self {
@@ -61,6 +79,7 @@ impl ConfigureForm {
             flake_entry,
             terminal_entry,
             rebuild_entry,
+            style_picker,
         }
     }
 
@@ -74,6 +93,7 @@ impl ConfigureForm {
             let mut config = app.config.borrow_mut();
             config.terminal_command = non_empty(self.terminal_entry.text().to_string());
             config.rebuild_command = non_empty(self.rebuild_entry.text().to_string());
+            config.view_mode = style_mode(self.style_picker.selected());
             if !flake.trim().is_empty() {
                 config.remember(flake.trim());
             }
@@ -230,4 +250,33 @@ fn preferences(app: &Rc<App>) -> gtk::Box {
     ));
 
     list
+}
+
+fn style_index(mode: ViewMode) -> u32 {
+    match mode {
+        ViewMode::List => 0,
+        ViewMode::Categories => 1,
+    }
+}
+
+fn style_mode(index: u32) -> ViewMode {
+    if index == 1 {
+        ViewMode::Categories
+    } else {
+        ViewMode::List
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn style_choices_round_trip_through_the_picker_index() {
+        assert_eq!(style_index(ViewMode::List), 0);
+        assert_eq!(style_index(ViewMode::Categories), 1);
+        assert_eq!(style_mode(0), ViewMode::List);
+        assert_eq!(style_mode(1), ViewMode::Categories);
+        assert_eq!(style_mode(99), ViewMode::List);
+    }
 }
