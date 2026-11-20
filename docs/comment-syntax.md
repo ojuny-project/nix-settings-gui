@@ -312,13 +312,20 @@ its own interface, such as a Dux Modular Shell or mango IPC call.
 | `users` | User account list with passwords, groups, SSH keys, and extras | name-keyed attribute set of user options |
 | `facter` | Detected hardware state plus a profile dropdown | profile string |
 | `docker` | Declarative container list with add, edit, and remove | container-name-keyed attribute set |
-| `mounts` | Editable `fileSystems` list with add, edit, and remove | mountpoint-keyed attribute set |
+| `mounts` | Mount table with an add row, a disk overview tree, and add/edit modals | mountpoint-keyed attribute set |
 | `secureboot` | Live firmware state, a Lanzaboote toggle, and a guided setup flow | `true` / `false` |
 | `raw`       | Monospace Nix editor | verbatim value |
 
 The `mounts` widget attaches to a mountpoint-keyed `fileSystems` attribute set.
-Each row edits `device`, `fsType`, `options`, and `neededForBoot`. Unknown
-fields are preserved, and a save never drops a field the widget does not model.
+The table shows mount location, drive name, drive UUID and options, with Edit
+and Remove, plus Migrate when the target is non-empty and user-owned. The add
+row lists non-mounted partitions only, with a mount location field, Add mount
+and Automount all. Add tmpfs and Add bind mount open the same modal. A modal is
+required when the filesystem needs an owner mapping, a driver, a subvolume, a
+size or a mode; Cancel prevents the row from being added. Below the table,
+Unpartitioned drives renders a tree of internal disks and unformatted
+partitions with one Modify button: a disk opens `cfdisk`, a partition opens the
+filesystem chooser. Unknown fields are preserved.
 
 ### Submodules
 
@@ -414,7 +421,7 @@ shape.
 | `users` | `users.users` | a name-keyed attribute set of accounts. Edits `description`, `hashedPassword`, `extraGroups`, `uid`, `shell`, `openssh.authorizedKeys.keys`, and an extra-options field. `wheel` is a separate sudo toggle. The add and remove actions keep at least one normal account with sudo and a password. |
 | `facter` | a profile string option, e.g. `ojuny.hardware.profile` | Finds the first `facter.json` in the flake, falling back to `modules/facter.json`, or `reportPath`. Shows the detected model, profile, coverage state, effective GPU layout, GPU source, and whether the profile manages the GPU. `profileCatalog` replaces the builtin profile table. The dropdown writes the normal string assignment. A missing report leaves the dropdown usable with empty detection details. |
 | `docker` | a name-keyed container attribute set, e.g. `ojuny.patch.docker.containers` or `virtualisation.oci-containers.containers` | Defaults to `{ image; ports; volumes; environment; autoStart; }`. `imageField`, `portsField`, `volumesField`, `environmentField`, and `autoStartField` replace those names. Add, edit, and remove one container at a time; `environment` is edited as key/value text rows; absent fields stay absent and unknown fields are preserved. |
-| `mounts` | a mountpoint-keyed `fileSystems` attribute set, e.g. `fileSystems` or a user-owned subset | Each row edits `device`, `fsType`, `options`, and `neededForBoot`. Rows can be added and removed, and fields the widget does not model are preserved. A mountpoint must be absolute, must not be a duplicate in the set, and must not resolve under `/`, `/nix`, `/boot`, `/efi`, `/bin`, `/lib`, `/var`, or `/etc`. |
+| `mounts` | a mountpoint-keyed `fileSystems` attribute set, e.g. `fileSystems` or a user-owned subset | The table shows mount location, drive name, drive UUID and options with Edit, Remove and, where applicable, Migrate. The add row lists non-mounted partitions only, with a mount location field, Add mount, Automount all, Add tmpfs and Add bind mount. A modal collects the required owner, driver, subvolume, size or mode choices; Cancel prevents the add. Unpartitioned drives is a selectable tree of internal disks and unformatted partitions with one Modify button. A mountpoint must be absolute, must not be a duplicate, and must not resolve under `/`, `/nix`, `/boot`, `/efi`, `/bin`, `/lib`, `/var`, or `/etc`. |
 | `secureboot` | `boot.lanzaboote.enable` | Shows live UEFI state from `bootctl` and `sbctl`, edits the Lanzaboote toggle, and opens a guided setup flow. The flow adds the `lanzaboote` flake input, writes the remaining Lanzaboote options, and runs key setup. Existing keys are kept unless the user explicitly removes them. |
 
 A `profileCatalog` file is a JSON object with `profiles`, `gpu_profiles`, and

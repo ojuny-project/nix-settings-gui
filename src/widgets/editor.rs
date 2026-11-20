@@ -7,9 +7,8 @@ use super::keybinds::{connect_keybind_row, keybind_rows_unchanged, keybinds_nix,
 #[cfg(feature = "ojuny-widgets")]
 use super::menu::{connect_menu_row, menu_rows_nix, menu_rows_unchanged, MenuRow};
 use super::monitors::{connect_monitor_row, monitor_row_unchanged, monitors_nix, MonitorRow};
-use super::mounts::{
-    mounts_nix, mounts_unchanged, mounts_validation_error, MountsRow,
-};
+use super::mounts::{mounts_nix, mounts_unchanged, mounts_validation_error};
+use crate::mounts::MountRow;
 use super::nix::{
     canonical_list, canonical_module_list, entry_text, expr_literal, number_literal, package_items,
     package_literal, parse_string_literal, path_literal, quote, serialize_modules, string_literal,
@@ -170,9 +169,9 @@ pub enum Editor {
     },
     Mounts {
         root: gtk::Box,
-        rows: Rc<RefCell<Vec<MountsRow>>>,
+        rows: Rc<RefCell<Vec<MountRow>>>,
+        orig: Rc<RefCell<Vec<MountRow>>>,
         on_change: ChangeHook,
-        orig_count: usize,
     },
     SecureBoot {
         root: gtk::Box,
@@ -457,9 +456,7 @@ impl Editor {
             Editor::Docker {
                 rows, orig_count, ..
             } => docker_unchanged(rows, *orig_count),
-            Editor::Mounts {
-                rows, orig_count, ..
-            } => mounts_unchanged(rows, *orig_count),
+            Editor::Mounts { rows, orig, .. } => mounts_unchanged(rows, orig),
             Editor::SecureBoot { toggle, .. } => toggle.is_active() == truthy(original),
             Editor::Grid { state, .. } => {
                 grid_unchanged(state)

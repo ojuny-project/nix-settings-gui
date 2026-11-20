@@ -1,4 +1,4 @@
-use super::basic::build_dropdown;
+use super::basic::build_dropdown_quoted;
 use super::context::{BuildContext, ChangeHook};
 use super::dispatch::build;
 use super::editor::Editor;
@@ -83,7 +83,7 @@ pub(crate) fn build_transform(value_text: &str) -> Editor {
         .iter()
         .map(|value| (*value).to_string())
         .collect();
-    build_dropdown(&choices, value_text)
+    build_dropdown_quoted(&choices, value_text)
 }
 
 fn number_spin(

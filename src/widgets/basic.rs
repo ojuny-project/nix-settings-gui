@@ -1,6 +1,8 @@
 use super::context::PackageSearch;
 use super::editor::Editor;
-use super::nix::{choice_literal, entry_text, number_literal, parse_string_literal, truthy};
+use super::nix::{
+    choice_literal, entry_text, number_literal, parse_string_literal, quote, truthy,
+};
 use crate::dsl::OptionSpec;
 use crate::value;
 use gtk::glib;
@@ -16,9 +18,24 @@ pub(crate) fn build_switch(value_text: &str) -> gtk::Switch {
 }
 
 pub(crate) fn build_dropdown(choices: &[String], value_text: &str) -> Editor {
+    build_dropdown_with(choices, value_text, choice_literal)
+}
+
+/// A dropdown whose choices are always Nix strings, even when a choice looks
+/// like a number. The monitor transform is a string enum, so `"90"` must stay
+/// quoted.
+pub(crate) fn build_dropdown_quoted(choices: &[String], value_text: &str) -> Editor {
+    build_dropdown_with(choices, value_text, quote)
+}
+
+fn build_dropdown_with(
+    choices: &[String],
+    value_text: &str,
+    literal: fn(&str) -> String,
+) -> Editor {
     let current = value_text.trim();
     let mut labels: Vec<String> = choices.to_vec();
-    let mut literals: Vec<String> = choices.iter().map(|c| choice_literal(c)).collect();
+    let mut literals = dropdown_literals(choices, literal);
     if !literals.iter().any(|l| l == current) {
         for existing in literals.iter_mut() {
             if existing.is_empty() {
@@ -41,6 +58,10 @@ pub(crate) fn build_dropdown(choices: &[String], value_text: &str) -> Editor {
         choices: literals,
     }
 }
+fn dropdown_literals(choices: &[String], literal: fn(&str) -> String) -> Vec<String> {
+    choices.iter().map(|choice| literal(choice)).collect()
+}
+
 pub(crate) fn build_spin(spec: &OptionSpec, value_text: &str) -> gtk::SpinButton {
     let min = spec.min.unwrap_or(-1.0e15);
     let max = spec.max.unwrap_or(1.0e15);
@@ -414,5 +435,18 @@ mod tests {
         assert_eq!(format_with_unit(16.0, 0, "MB"), "16 MB");
         assert_eq!(format_with_unit(1.5, 2, "GB"), "1.50 GB");
         assert_eq!(format_with_unit(16.0, 0, ""), "16");
+    }
+
+    #[test]
+    fn quoted_dropdown_keeps_numeric_strings() {
+        let choices = ["normal", "90"].map(str::to_string).to_vec();
+        assert_eq!(
+            dropdown_literals(&choices, quote),
+            vec!["\"normal\"".to_string(), "\"90\"".to_string()]
+        );
+        assert_eq!(
+            dropdown_literals(&choices, choice_literal),
+            vec!["\"normal\"".to_string(), "90".to_string()]
+        );
     }
 }

@@ -35,18 +35,47 @@ pub struct Device {
     #[serde(default)]
     pub uuid: Option<String>,
     #[serde(default)]
-    pub size: Option<String>,
+    pub size: Option<u64>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
     pub pkname: Option<String>,
     #[serde(default)]
+    pub mountpoints: Vec<Option<String>>,
+    #[serde(default)]
     pub children: Vec<Device>,
 }
 
-/// Parse the JSON printed by `lsblk --json`.
+impl Device {
+    pub fn is_mounted(&self) -> bool {
+        self.mountpoints
+            .iter()
+            .flatten()
+            .any(|mountpoint| !mountpoint.is_empty())
+    }
+}
+
+/// Parse the JSON printed by `lsblk --json --bytes`.
 pub fn parse_lsblk(text: &str) -> Option<BlockDevices> {
     serde_json::from_str(text).ok()
+}
+
+pub fn format_size(bytes: Option<u64>) -> String {
+    let Some(bytes) = bytes else {
+        return "?".to_string();
+    };
+    const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
 }
 
 /// A disk is external when it is on USB or MMC, reports itself removable, or
@@ -120,6 +149,19 @@ pub fn sysfs_block_path(name: &str) -> String {
     format!("/sys/block/{name}")
 }
 
+pub fn canonical_sysfs_block_path(name: &str) -> String {
+    std::fs::canonicalize(sysfs_block_path(name))
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|_| sysfs_block_path(name))
+}
+
+/// Classify one disk using the live kernel state.
+#[allow(dead_code)]
+pub fn disk_is_external(device: &Device) -> bool {
+    let path = canonical_sysfs_block_path(&device.name);
+    is_external(device, &path, &thunderbolt_bdfs())
+}
+
 /// The EFI system partition GUID, excluded from the mount candidates.
 pub const ESP_PARTTYPE: &str = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
 
@@ -130,11 +172,12 @@ pub struct MountCandidate {
     pub path: String,
     pub uuid: Option<String>,
     pub fstype: String,
-    pub size: Option<String>,
+    pub size: Option<u64>,
     pub model: Option<String>,
 }
 
-/// Partitions on internal disks that carry a mountable filesystem.
+/// Partitions on internal disks that carry a mountable filesystem and are not
+/// already mounted.
 pub fn internal_candidates(devices: &BlockDevices) -> Vec<MountCandidate> {
     let tb = thunderbolt_bdfs();
     let mut out = Vec::new();
@@ -147,7 +190,7 @@ pub fn internal_candidates(devices: &BlockDevices) -> Vec<MountCandidate> {
             continue;
         }
         for part in &disk.children {
-            if part.kind != "part" {
+            if part.kind != "part" || part.is_mounted() {
                 continue;
             }
             let Some(fstype) = part.fstype.as_deref() else {
@@ -168,7 +211,7 @@ pub fn internal_candidates(devices: &BlockDevices) -> Vec<MountCandidate> {
                 },
                 uuid: part.uuid.clone(),
                 fstype: fstype.to_string(),
-                size: part.size.clone(),
+                size: part.size,
                 model: disk.model.clone(),
             });
         }
@@ -190,29 +233,85 @@ fn is_unmountable_type(fstype: &str) -> bool {
 }
 
 /// One disk or partition offered to the Modify actions.
+#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiskCandidate {
     pub name: String,
     pub path: String,
-    pub size: Option<String>,
+    pub size: Option<u64>,
     pub model: Option<String>,
+    /// Unallocated bytes on a disk. `None` for partitions.
+    pub free: Option<u64>,
 }
 
-/// Internal disks that are not the boot, root or Nix disk.
+fn disk_used_bytes(disk: &Device) -> u64 {
+    disk.children.iter().filter_map(|child| child.size).sum()
+}
+
+fn disk_free_bytes(disk: &Device) -> u64 {
+    disk.size.unwrap_or(0).saturating_sub(disk_used_bytes(disk))
+}
+
+fn has_mounted_child(disk: &Device) -> bool {
+    disk.is_mounted()
+        || disk
+            .children
+            .iter()
+            .any(|child| child.is_mounted())
+}
+
+fn is_internal_disk(disk: &Device, protected: &[String], thunderbolt: &[String]) -> bool {
+    disk.kind == "disk"
+        && !protected.contains(&disk.name)
+        && !is_external(
+            disk,
+            &canonical_sysfs_block_path(&disk.name),
+            thunderbolt,
+        )
+}
+
+/// Internal disks that are not the boot, root or Nix disk and have no mounted
+/// partition. They are the only disks cfdisk may touch.
+#[allow(dead_code)]
 pub fn internal_disks(devices: &BlockDevices) -> Vec<DiskCandidate> {
     let tb = thunderbolt_bdfs();
     let protected = protected_disk_names();
     let mut out: Vec<DiskCandidate> = devices
         .blockdevices
         .iter()
-        .filter(|disk| disk.kind == "disk")
-        .filter(|disk| !protected.contains(&disk.name))
-        .filter(|disk| !is_external(disk, &canonical_sysfs_block_path(&disk.name), &tb))
+        .filter(|disk| is_internal_disk(disk, &protected, &tb))
+        .filter(|disk| !has_mounted_child(disk))
         .map(|disk| DiskCandidate {
             name: disk.name.clone(),
             path: disk.path.clone(),
-            size: disk.size.clone(),
+            size: disk.size,
             model: disk.model.clone(),
+            free: None,
+        })
+        .collect();
+    out.sort_by(|left, right| left.name.cmp(&right.name));
+    out
+}
+
+/// Internal disks with unallocated space and no mounted partition.
+#[allow(dead_code)]
+pub fn free_space_disks(devices: &BlockDevices) -> Vec<DiskCandidate> {
+    let tb = thunderbolt_bdfs();
+    let protected = protected_disk_names();
+    let mut out: Vec<DiskCandidate> = devices
+        .blockdevices
+        .iter()
+        .filter(|disk| is_internal_disk(disk, &protected, &tb))
+        .filter(|disk| !has_mounted_child(disk))
+        .filter_map(|disk| {
+            let free = disk_free_bytes(disk);
+            (free > 0).then(|| DiskCandidate {
+                name: disk.name.clone(),
+                path: disk.path.clone(),
+                size: disk.size,
+                model: disk.model.clone(),
+                free: Some(free),
+            })
         })
         .collect();
     out.sort_by(|left, right| left.name.cmp(&right.name));
@@ -220,19 +319,17 @@ pub fn internal_disks(devices: &BlockDevices) -> Vec<DiskCandidate> {
 }
 
 /// Internal partitions with no filesystem, excluding the ESP.
+#[allow(dead_code)]
 pub fn unformatted_partitions(devices: &BlockDevices) -> Vec<DiskCandidate> {
     let tb = thunderbolt_bdfs();
     let protected = protected_disk_names();
     let mut out = Vec::new();
     for disk in &devices.blockdevices {
-        if disk.kind != "disk" || protected.contains(&disk.name) {
-            continue;
-        }
-        if is_external(disk, &canonical_sysfs_block_path(&disk.name), &tb) {
+        if !is_internal_disk(disk, &protected, &tb) {
             continue;
         }
         for part in &disk.children {
-            if part.kind != "part" || part.fstype.is_some() {
+            if part.kind != "part" || part.fstype.is_some() || part.is_mounted() {
                 continue;
             }
             if part.parttype.as_deref() == Some(ESP_PARTTYPE) {
@@ -241,8 +338,9 @@ pub fn unformatted_partitions(devices: &BlockDevices) -> Vec<DiskCandidate> {
             out.push(DiskCandidate {
                 name: part.name.clone(),
                 path: part.path.clone(),
-                size: part.size.clone(),
+                size: part.size,
                 model: disk.model.clone(),
+                free: None,
             });
         }
     }
@@ -276,25 +374,14 @@ pub fn protected_disk_names() -> Vec<String> {
         .collect()
 }
 
-pub fn canonical_sysfs_block_path(name: &str) -> String {
-    std::fs::canonicalize(sysfs_block_path(name))
-        .map(|path| path.to_string_lossy().to_string())
-        .unwrap_or_else(|_| sysfs_block_path(name))
-}
-
-/// Classify one disk using the live kernel state.
-pub fn disk_is_external(device: &Device) -> bool {
-    let path = canonical_sysfs_block_path(&device.name);
-    is_external(device, &path, &thunderbolt_bdfs())
-}
-
 /// Run `lsblk` and parse the result. A missing or failing tool returns none.
 pub fn probe() -> Option<BlockDevices> {
     let output = std::process::Command::new("lsblk")
         .args([
             "--json",
+            "--bytes",
             "--output",
-            "NAME,PATH,TYPE,TRAN,RM,HOTPLUG,FSTYPE,PARTTYPE,UUID,SIZE,MODEL,PKNAME",
+            "NAME,PATH,TYPE,TRAN,RM,HOTPLUG,FSTYPE,PARTTYPE,UUID,SIZE,MODEL,PKNAME,MOUNTPOINTS",
         ])
         .output()
         .ok()?;
@@ -304,6 +391,103 @@ pub fn probe() -> Option<BlockDevices> {
     parse_lsblk(&String::from_utf8_lossy(&output.stdout))
 }
 
+/// One partition in the Modify tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OverviewPartition {
+    pub name: String,
+    pub path: String,
+    pub size: Option<u64>,
+    pub fstype: Option<String>,
+    pub parttype: Option<String>,
+    pub mounted: bool,
+}
+
+/// One disk and its partitions in the Modify tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OverviewDisk {
+    pub name: String,
+    pub path: String,
+    pub size: Option<u64>,
+    pub model: Option<String>,
+    pub free: u64,
+    pub mounted_child: bool,
+    pub partitions: Vec<OverviewPartition>,
+}
+
+/// Disks and partitions for the tree view. A disk is included when it has
+/// unallocated space or an unformatted partition.
+pub fn overview(devices: &BlockDevices) -> Vec<OverviewDisk> {
+    let tb = thunderbolt_bdfs();
+    let protected = protected_disk_names();
+    let mut out = Vec::new();
+    for disk in &devices.blockdevices {
+        if !is_internal_disk(disk, &protected, &tb) {
+            continue;
+        }
+        let partitions: Vec<OverviewPartition> = disk
+            .children
+            .iter()
+            .filter(|part| part.kind == "part")
+            .map(|part| OverviewPartition {
+                name: part.name.clone(),
+                path: part.path.clone(),
+                size: part.size,
+                fstype: part.fstype.clone(),
+                parttype: part.parttype.clone(),
+                mounted: part.is_mounted(),
+            })
+            .collect();
+        let has_unformatted = partitions.iter().any(|part| {
+            part.fstype.is_none()
+                && !part.mounted
+                && part.parttype.as_deref() != Some(ESP_PARTTYPE)
+        });
+        let free = disk_free_bytes(disk);
+        if free == 0 && !has_unformatted {
+            continue;
+        }
+        out.push(OverviewDisk {
+            name: disk.name.clone(),
+            path: disk.path.clone(),
+            size: disk.size,
+            model: disk.model.clone(),
+            free,
+            mounted_child: has_mounted_child(disk),
+            partitions,
+        });
+    }
+    out.sort_by(|left, right| left.name.cmp(&right.name));
+    out
+}
+
+/// UUID to `/dev` name for every partition, including mounted ones. Used by
+/// the table's Drive name column.
+pub fn partition_names(devices: &BlockDevices) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for disk in &devices.blockdevices {
+        for part in &disk.children {
+            if part.kind == "part" {
+                if let Some(uuid) = &part.uuid {
+                    out.push((uuid.clone(), part.name.clone()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Whether a partition already has a filesystem. A failed probe returns true so
+/// the Modify action refuses rather than overwriting.
+pub fn has_filesystem(path: &str) -> bool {
+    match std::process::Command::new("lsblk")
+        .args(["-no", "FSTYPE", path])
+        .output()
+    {
+        Ok(output) => !String::from_utf8_lossy(&output.stdout).trim().is_empty(),
+        Err(_) => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,20 +495,50 @@ mod tests {
     const SAMPLE: &str = r#"{
       "blockdevices": [
         {"name":"sdb","path":"/dev/sdb","type":"disk","tran":"usb","rm":false,
-         "hotplug":true,"fstype":null,"size":"465,8G","model":"Tech","pkname":null,
+         "hotplug":true,"fstype":null,"size":500107862016,"model":"Tech","pkname":null,
+         "mountpoints":[],
          "children":[
            {"name":"sdb1","path":"/dev/sdb1","type":"part","tran":"usb","rm":false,
-            "hotplug":true,"fstype":"exfat","uuid":"4E21-0000","pkname":"sdb"}
+            "hotplug":true,"fstype":"exfat","uuid":"4E21-0000","size":100000000000,
+            "pkname":"sdb","mountpoints":[]}
          ]},
         {"name":"nvme0n1","path":"/dev/nvme0n1","type":"disk","tran":"nvme","rm":false,
-         "hotplug":false,"fstype":null,"size":"238,5G","model":"INTEL","pkname":null}
+         "hotplug":false,"fstype":null,"size":256060514304,"model":"INTEL","pkname":null,
+         "mountpoints":[],
+         "children":[
+           {"name":"nvme0n1p1","path":"/dev/nvme0n1p1","type":"part","tran":"nvme",
+            "rm":false,"hotplug":false,"fstype":"vfat","uuid":"C542-8434",
+            "size":1073741824,"pkname":"nvme0n1","mountpoints":["/boot"]},
+           {"name":"nvme0n1p2","path":"/dev/nvme0n1p2","type":"part","tran":"nvme",
+            "rm":false,"hotplug":false,"fstype":"ext4","uuid":"a710",
+            "size":240000000000,"pkname":"nvme0n1","mountpoints":["/"]}
+         ]},
+        {"name":"sdc","path":"/dev/sdc","type":"disk","tran":"sata","rm":false,
+         "hotplug":false,"fstype":null,"size":240057409536,"model":"WD Green",
+         "pkname":null,"mountpoints":[],
+         "children":[
+           {"name":"sdc1","path":"/dev/sdc1","type":"part","tran":"sata","rm":false,
+            "hotplug":false,"fstype":"ext4","uuid":"1111-2222","size":100000000000,
+            "pkname":"sdc","mountpoints":[]},
+           {"name":"sdc2","path":"/dev/sdc2","type":"part","tran":"sata","rm":false,
+            "hotplug":false,"fstype":"swap","uuid":"3333-4444","size":8589934592,
+            "pkname":"sdc","mountpoints":["[SWAP]"]}
+         ]},
+        {"name":"sdd","path":"/dev/sdd","type":"disk","tran":"sata","rm":false,
+         "hotplug":false,"fstype":null,"size":500000000000,"model":"Spare",
+         "pkname":null,"mountpoints":[],
+         "children":[
+           {"name":"sdd1","path":"/dev/sdd1","type":"part","tran":"sata","rm":false,
+            "hotplug":false,"fstype":"ext4","uuid":"9999-0000","size":100000000000,
+            "pkname":"sdd","mountpoints":[]}
+         ]}
       ]
     }"#;
 
     #[test]
     fn parses_lsblk_json_and_children() {
         let parsed = parse_lsblk(SAMPLE).expect("json");
-        assert_eq!(parsed.blockdevices.len(), 2);
+        assert_eq!(parsed.blockdevices.len(), 4);
         assert_eq!(parsed.blockdevices[0].tran.as_deref(), Some("usb"));
         assert_eq!(parsed.blockdevices[0].children.len(), 1);
         assert_eq!(
@@ -375,32 +589,36 @@ mod tests {
     }
 
     #[test]
-    fn offers_only_mountable_internal_partitions() {
-        let sample = r#"{
-          "blockdevices": [
-            {"name":"sdc","path":"/dev/sdc","type":"disk","tran":"sata","rm":false,
-             "hotplug":false,"fstype":null,"size":"240G","model":"WD Green","pkname":null,
-             "children":[
-               {"name":"sdc1","path":"/dev/sdc1","type":"part","tran":"sata","rm":false,
-                "hotplug":false,"fstype":"ext4","uuid":"1111-2222","pkname":"sdc"},
-               {"name":"sdc2","path":"/dev/sdc2","type":"part","tran":"sata","rm":false,
-                "hotplug":false,"fstype":"swap","uuid":"3333-4444","pkname":"sdc"},
-               {"name":"sdc3","path":"/dev/sdc3","type":"part","tran":"sata","rm":false,
-                "hotplug":false,"fstype":"vfat","uuid":"5555-6666",
-                "parttype":"c12a7328-f81f-11d2-ba4b-00a0c93ec93b","pkname":"sdc"}
-             ]},
-            {"name":"sdb","path":"/dev/sdb","type":"disk","tran":"usb","rm":false,
-             "hotplug":true,"fstype":null,"size":"240G","model":"USB","pkname":null,
-             "children":[
-               {"name":"sdb1","path":"/dev/sdb1","type":"part","tran":"usb","rm":false,
-                "hotplug":true,"fstype":"exfat","uuid":"7777-8888","pkname":"sdb"}
-             ]}
-          ]
-        }"#;
-        let parsed = parse_lsblk(sample).expect("json");
+    fn offers_only_unmounted_mountable_internal_partitions() {
+        let parsed = parse_lsblk(SAMPLE).expect("json");
         let candidates = internal_candidates(&parsed);
-        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].name, "sdc1");
+        assert_eq!(candidates[1].name, "sdd1");
         assert_eq!(candidates[0].fstype, "ext4");
+    }
+
+    #[test]
+    fn free_space_disks_skip_mounted_and_protected_disks() {
+        let parsed = parse_lsblk(SAMPLE).expect("json");
+        let free = free_space_disks(&parsed);
+        assert_eq!(free.len(), 1);
+        assert_eq!(free[0].name, "sdd");
+        assert!(free[0].free.unwrap() > 0);
+    }
+
+    #[test]
+    fn unformatted_partitions_exclude_mounted_and_swap() {
+        let parsed = parse_lsblk(SAMPLE).expect("json");
+        let parts = unformatted_partitions(&parsed);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn formats_bytes() {
+        assert_eq!(format_size(Some(0)), "0 B");
+        assert_eq!(format_size(Some(1024)), "1.0 K");
+        assert_eq!(format_size(Some(256060514304)), "238.5 G");
+        assert_eq!(format_size(None), "?");
     }
 }

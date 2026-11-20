@@ -41,6 +41,10 @@ impl MountRow {
             _ => Identity::Synthetic,
         }
     }
+
+    pub fn uuid(&self) -> Option<&str> {
+        self.device.as_deref()?.strip_prefix("/dev/disk/by-uuid/")
+    }
 }
 
 /// Read every direct mountpoint binding of a `fileSystems` literal.

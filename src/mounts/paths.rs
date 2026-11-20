@@ -46,7 +46,7 @@ pub fn is_protected_resolved(path: &str) -> bool {
     let Some(resolved) = resolve(path) else {
         return true;
     };
-    protected_normalized(&resolved)
+    is_protected(&resolved)
 }
 
 fn protected_normalized(normalized: &str) -> bool {

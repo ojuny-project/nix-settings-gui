@@ -267,26 +267,22 @@ rest after the attached option. The result is parse-checked and formatted by
 `edit.rs` before anything is written. Privileged steps run through the
 configured terminal command, so the app never sees the sudo password.
 
-The `mounts` control edits a mountpoint-keyed `fileSystems` attribute set. Each
-row edits the device, filesystem type, options, and `neededForBoot`, and rows
-can be added and removed. A save rewrites the whole literal, keeps fields the
-control does not model, and refuses a row whose mountpoint is relative, a
-duplicate, or resolves under `/`, `/nix`, `/boot`, `/efi`, `/bin`, `/lib`,
-`/var`, or `/etc`. A detected-disks picker lists internal partitions only and fills a new row with
-the filesystem's default options. When the type needs an owner mapping, a
-permission dialog asks what the owner, the group and everyone else may do, and
-writes the matching umask. Automount all adds one row per candidate under
-`/mnt/<name>`. A separate disk picker opens `cfdisk` through the configured
-terminal with `sudo`, and never lists the disk that carries `/`, `/boot`,
-`/nix` or `/efi`. A non-empty target is accepted only when the current user
-owns it, so migration never needs elevation. A second picker lists unformatted
-partitions and opens a filesystem chooser that runs mkfs through the same
-terminal. When a row's target is non-empty and user-owned, the row offers
-Migrate existing contents, which copies, verifies, moves the original aside,
-mounts the new filesystem and leaves `<target>.old` for deletion after a
-successful boot. Each row has nofail and read-only switches; fsck is written as
-false for ntfs and exfat, whose helpers are not guaranteed in the boot
-environment.
+The `mounts` control edits a mountpoint-keyed `fileSystems` attribute set. The
+table shows mount location, drive name, drive UUID and options, with Edit and
+Remove, plus Migrate when the target is non-empty and user-owned. The add row
+lists non-mounted partitions only, with a mount location field, Add mount and
+Automount all. Add tmpfs and Add bind mount open the same modal. A modal is
+required when the filesystem needs an owner mapping, a driver, a subvolume, a
+size or a mode; Cancel prevents the row from being added, so a drive is never
+written with incomplete settings. The owner mapping uses three readable
+dropdowns for the owner, the group and everyone else. Unpartitioned drives
+renders a selectable tree of internal disks and unformatted partitions with one
+Modify button: a disk opens `cfdisk` through the configured terminal, a
+partition opens the filesystem chooser. A partition that already has a
+filesystem is refused before the formatter runs. A save rewrites the whole
+literal, keeps fields the control does not model, and refuses a row whose
+mountpoint is relative, a duplicate, or resolves under `/`, `/nix`, `/boot`,
+`/efi`, `/bin`, `/lib`, `/var` or `/etc`.
 
 Bar and dock editors load disabled entries and show an enable switch on each
 row. Bar sections support moving a widget between left, center, and right by
