@@ -132,4 +132,3 @@ parser, or edit changes.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE). The stack reuses `nix-regedit`'s
 scanner, `nixd` client, and write path.
-
