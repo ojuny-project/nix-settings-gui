@@ -241,7 +241,7 @@ pub(crate) fn attr_key(raw: &str) -> String {
             .unwrap_or(false)
         && raw
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            .all(|c| c.is_ascii_alphanumeric() || c == '_');
     if valid {
         raw.to_string()
     } else {
@@ -612,6 +612,7 @@ mod tests {
     #[test]
     fn quotes_dotted_attr_keys() {
         assert_eq!(attr_key("dank-rs.cal.simple"), "\"dank-rs.cal.simple\"");
+        assert_eq!(attr_key("HDMI-A-1"), "\"HDMI-A-1\"");
         assert_eq!(attr_key("plain"), "plain");
         assert_eq!(attr_key(""), "\"\"");
         assert_eq!(attr_key("daily "), "\"daily \"");
