@@ -10,6 +10,33 @@ use super::state::{App, Msg, Tx};
 // git sync
 // ---------------------------------------------------------------------------
 
+/// The branch currently checked out. A detached HEAD cannot be pulled by name.
+fn current_branch(dir: &str) -> Result<String, String> {
+    let branch = run_git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let branch = branch.trim();
+    if branch.is_empty() || branch == "HEAD" {
+        return Err("the flake repository is not on a checked-out branch".to_string());
+    }
+    Ok(branch.to_string())
+}
+
+/// Pull the checked-out branch from `origin`, never an unrelated configured
+/// upstream.
+fn pull_args<'a>(branch: &'a str, ff_only: bool) -> Vec<&'a str> {
+    let mut args = vec!["pull", "--no-edit"];
+    if ff_only {
+        args.push("--ff-only");
+    }
+    args.push("origin");
+    args.push(branch);
+    args
+}
+
+fn pull_branch(dir: &str, ff_only: bool) -> Result<(), String> {
+    let branch = current_branch(dir)?;
+    run_git(dir, &pull_args(&branch, ff_only)).map(|_| ())
+}
+
 /// Pull the flake directory, then report whether the tree is dirty or has
 /// untracked files. Runs off the UI thread.
 pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
@@ -20,7 +47,7 @@ pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
     }
     app.status.set_text("Git: pulling...");
     spawn(tx, move |tx| {
-        let result = run_git(&dir, &["pull", "--no-edit"]).and_then(|_| {
+        let result = pull_branch(&dir, false).and_then(|_| {
             let status = run_git(&dir, &["status", "--porcelain"])?;
             Ok(!status.trim().is_empty())
         });
@@ -31,24 +58,23 @@ pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
 /// Pull the flake directory without merging. Used by the automatic sync on
 /// open, where a failed pull is reported and the scan continues.
 pub(super) fn pull(dir: &str) -> Result<(), String> {
-    run_git(dir, &["pull", "--ff-only", "--no-edit"])
-        .map(|_| ())
-        .map_err(|error| fast_forward_error(dir, error))
+    pull_branch(dir, true).map_err(|error| fast_forward_error(dir, error))
 }
 
 /// A fast-forward refusal is a divergence the user must resolve. Report the
-/// repository path, the configured upstream and the ahead/behind counts so a
-/// lookalike branch cannot masquerade as a synced one.
+/// repository path, the checked-out branch's remote and the ahead/behind
+/// counts so a lookalike branch cannot masquerade as a synced one.
 fn fast_forward_error(dir: &str, error: String) -> String {
     if error.contains("fast-forward") {
-        let upstream = run_git(
-            dir,
-            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
-        )
-        .unwrap_or_default();
-        let counts = run_git(dir, &["rev-list", "--left-right", "--count", "HEAD...@{u}"])
+        let branch = current_branch(dir).unwrap_or_default();
+        if branch.is_empty() {
+            return divergence_message(dir, "", "");
+        }
+        let upstream = format!("origin/{branch}");
+        let range = format!("HEAD...{upstream}");
+        let counts = run_git(dir, &["rev-list", "--left-right", "--count", range.as_str()])
             .unwrap_or_default();
-        divergence_message(dir, upstream.trim(), counts.trim())
+        divergence_message(dir, &upstream, counts.trim())
     } else {
         format!("{dir}: {error}")
     }
@@ -90,31 +116,28 @@ fn classify(output: &str) -> Result<RemoteState, String> {
     })
 }
 
-/// Fetch and reject a commit when the branch is behind or diverged from its
-/// upstream. Returns whether the working tree has changes to commit.
+/// Fetch and reject a commit when the checked-out branch is behind or diverged
+/// from its same-named origin branch. Returns whether the working tree has
+/// changes to commit.
 fn save_sync_state(dir: &str) -> Result<bool, String> {
     run_git(dir, &["rev-parse", "--is-inside-work-tree"])
         .map_err(|_| "the flake directory is not a git repository".to_string())?;
-    run_git(
-        dir,
-        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
-    )
-    .map_err(|_| "no upstream branch is configured".to_string())?;
-    run_git(dir, &["fetch"])?;
-    let counts = run_git(dir, &["rev-list", "--left-right", "--count", "HEAD...@{u}"])?;
+    let branch = current_branch(dir)?;
+    let upstream = format!("origin/{branch}");
+    run_git(dir, &["fetch", "origin", branch.as_str()])?;
+    let range = format!("HEAD...{upstream}");
+    let counts = run_git(dir, &["rev-list", "--left-right", "--count", range.as_str()])?;
     match classify(&counts)? {
         RemoteState::Current => {}
         RemoteState::Behind => {
-            return Err(
-                "the upstream branch has newer commits; the save was written to disk but not committed"
-                    .to_string(),
-            )
+            return Err(format!(
+                "{upstream} has newer commits; the save was written to disk but not committed"
+            ))
         }
         RemoteState::Diverged => {
-            return Err(
-                "the branch and its upstream have diverged; the save was written to disk but not committed"
-                    .to_string(),
-            )
+            return Err(format!(
+                "the branch and {upstream} have diverged; the save was written to disk but not committed"
+            ))
         }
     }
     let status = run_git(dir, &["status", "--porcelain"])?;
@@ -135,11 +158,13 @@ pub(super) fn start_save_sync(app: &Rc<App>, tx: &Tx) {
     });
 }
 
-/// Stage every change in the flake directory, commit it, and push.
+/// Stage every change in the flake directory, commit it, and push the
+/// checked-out branch to its same-named origin branch.
 fn git_commit_and_push(dir: &str, message: &str) -> Result<String, String> {
+    let branch = current_branch(dir)?;
     run_git(dir, &["add", "./*"])?;
     run_git(dir, &["commit", "-m", message])?;
-    run_git(dir, &["push"])?;
+    run_git(dir, &["push", "origin", branch.as_str()])?;
     Ok(message.to_string())
 }
 
@@ -270,23 +295,35 @@ mod tests {
     }
 
     #[test]
+    fn pull_uses_the_checked_out_branch() {
+        assert_eq!(
+            pull_args("main", false),
+            vec!["pull", "--no-edit", "origin", "main"]
+        );
+        assert_eq!(
+            pull_args("main", true),
+            vec!["pull", "--no-edit", "--ff-only", "origin", "main"]
+        );
+    }
+
+    #[test]
     fn pull_is_non_interactive() {
-        let sync = git_command("/tmp", &["pull", "--no-edit"]);
+        let sync = git_command("/tmp", &pull_args("main", false));
         assert_eq!(
             sync.get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec!["pull", "--no-edit"]
+            vec!["pull", "--no-edit", "origin", "main"]
         );
         assert_eq!(env_value(&sync, "GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
         assert_eq!(env_value(&sync, "GIT_EDITOR").as_deref(), Some("true"));
 
-        let open = git_command("/tmp", &["pull", "--ff-only", "--no-edit"]);
+        let open = git_command("/tmp", &pull_args("main", true));
         assert_eq!(
             open.get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec!["pull", "--ff-only", "--no-edit"]
+            vec!["pull", "--no-edit", "--ff-only", "origin", "main"]
         );
         assert_eq!(env_value(&open, "GIT_EDITOR").as_deref(), Some("true"));
     }
