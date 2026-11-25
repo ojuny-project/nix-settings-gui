@@ -645,7 +645,8 @@ mod tests {
 
     #[test]
     fn keeps_output_from_a_nonzero_exit() {
-        let output = run("bash", &["-c", "echo hello; exit 1"]).unwrap();
+        let shell = std::env::var("BASH").unwrap_or_else(|_| "bash".to_string());
+        let output = run(&shell, &["-c", "echo hello; exit 1"]).unwrap();
         assert_eq!(output.trim(), "hello");
     }
 
