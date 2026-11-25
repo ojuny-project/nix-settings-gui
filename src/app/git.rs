@@ -20,7 +20,7 @@ pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
     }
     app.status.set_text("Git: pulling...");
     spawn(tx, move |tx| {
-        let result = run_git(&dir, &["pull"]).and_then(|_| {
+        let result = run_git(&dir, &["pull", "--no-edit"]).and_then(|_| {
             let status = run_git(&dir, &["status", "--porcelain"])?;
             Ok(!status.trim().is_empty())
         });
@@ -31,7 +31,20 @@ pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
 /// Pull the flake directory without merging. Used by the automatic sync on
 /// open, where a failed pull is reported and the scan continues.
 pub(super) fn pull(dir: &str) -> Result<(), String> {
-    run_git(dir, &["pull", "--ff-only"]).map(|_| ())
+    run_git(dir, &["pull", "--ff-only", "--no-edit"])
+        .map(|_| ())
+        .map_err(fast_forward_error)
+}
+
+/// A fast-forward refusal is a divergence the user must resolve, not an editor
+/// or terminal failure.
+fn fast_forward_error(error: String) -> String {
+    if error.contains("fast-forward") || error.contains("diverged") {
+        "the local branch has diverged from its upstream; merge it, then open the GUI again"
+            .to_string()
+    } else {
+        error
+    }
 }
 
 /// Whether the local branch can accept a new commit and push.
@@ -141,12 +154,22 @@ pub(super) fn stage_deletion(dir: &str, relative: &str) -> Result<(), String> {
     run_git(dir, &["add", "-u", "--", relative]).map(|_| ())
 }
 
+/// A git invocation with prompts and editors disabled, so a merge never waits
+/// for a terminal the GUI does not have.
+fn git_command(dir: &str, args: &[&str]) -> std::process::Command {
+    let mut command = std::process::Command::new("git");
+    command
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_EDITOR", "true");
+    command
+}
+
 /// Run a git subcommand in `dir`, returning stdout on success and a message on
 /// failure.
 fn run_git(dir: &str, args: &[&str]) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
+    let output = git_command(dir, args)
         .output()
         .map_err(|e| format!("cannot run git {}: {e}", args.join(" ")))?;
     if output.status.success() {
@@ -221,5 +244,47 @@ mod tests {
         assert_eq!(classify("2\t0").unwrap(), RemoteState::Current);
         assert_eq!(classify("0\t2").unwrap(), RemoteState::Behind);
         assert_eq!(classify("1\t2").unwrap(), RemoteState::Diverged);
+    }
+
+    fn env_value(command: &std::process::Command, key: &str) -> Option<String> {
+        command
+            .get_envs()
+            .find(|(name, _)| name.to_string_lossy() == key)
+            .and_then(|(_, value)| value)
+            .map(|value| value.to_string_lossy().into_owned())
+    }
+
+    #[test]
+    fn pull_is_non_interactive() {
+        let sync = git_command("/tmp", &["pull", "--no-edit"]);
+        assert_eq!(
+            sync.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["pull", "--no-edit"]
+        );
+        assert_eq!(env_value(&sync, "GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
+        assert_eq!(env_value(&sync, "GIT_EDITOR").as_deref(), Some("true"));
+
+        let open = git_command("/tmp", &["pull", "--ff-only", "--no-edit"]);
+        assert_eq!(
+            open.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["pull", "--ff-only", "--no-edit"]
+        );
+        assert_eq!(env_value(&open, "GIT_EDITOR").as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn fast_forward_refusal_reads_as_divergence() {
+        let message = fast_forward_error(
+            "git pull: fatal: Not possible to fast-forward, aborting.".to_string(),
+        );
+        assert!(message.contains("diverged"));
+        assert_eq!(
+            fast_forward_error("git pull: no such remote".to_string()),
+            "git pull: no such remote"
+        );
     }
 }
