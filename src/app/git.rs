@@ -33,18 +33,33 @@ pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
 pub(super) fn pull(dir: &str) -> Result<(), String> {
     run_git(dir, &["pull", "--ff-only", "--no-edit"])
         .map(|_| ())
-        .map_err(fast_forward_error)
+        .map_err(|error| fast_forward_error(dir, error))
 }
 
-/// A fast-forward refusal is a divergence the user must resolve, not an editor
-/// or terminal failure.
-fn fast_forward_error(error: String) -> String {
-    if error.contains("fast-forward") || error.contains("diverged") {
-        "the local branch has diverged from its upstream; merge it, then open the GUI again"
-            .to_string()
+/// A fast-forward refusal is a divergence the user must resolve. Report the
+/// repository path, the configured upstream and the ahead/behind counts so a
+/// lookalike branch cannot masquerade as a synced one.
+fn fast_forward_error(dir: &str, error: String) -> String {
+    if error.contains("fast-forward") {
+        let upstream = run_git(
+            dir,
+            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        )
+        .unwrap_or_default();
+        let counts = run_git(dir, &["rev-list", "--left-right", "--count", "HEAD...@{u}"])
+            .unwrap_or_default();
+        divergence_message(dir, upstream.trim(), counts.trim())
     } else {
-        error
+        format!("{dir}: {error}")
     }
+}
+
+fn divergence_message(dir: &str, upstream: &str, counts: &str) -> String {
+    format!(
+        "{dir}: the local branch has diverged from {} (ahead/behind {}); merge it or push it, then reopen",
+        if upstream.is_empty() { "its upstream" } else { upstream },
+        if counts.is_empty() { "unknown" } else { counts }
+    )
 }
 
 /// Whether the local branch can accept a new commit and push.
@@ -278,13 +293,14 @@ mod tests {
 
     #[test]
     fn fast_forward_refusal_reads_as_divergence() {
-        let message = fast_forward_error(
-            "git pull: fatal: Not possible to fast-forward, aborting.".to_string(),
-        );
+        let message = divergence_message("/repo", "origin/main", "0\t2");
+        assert!(message.contains("/repo"));
+        assert!(message.contains("origin/main"));
+        assert!(message.contains("0\t2"));
         assert!(message.contains("diverged"));
         assert_eq!(
-            fast_forward_error("git pull: no such remote".to_string()),
-            "git pull: no such remote"
+            fast_forward_error("/repo", "git pull: no such remote".to_string()),
+            "/repo: git pull: no such remote"
         );
     }
 }
