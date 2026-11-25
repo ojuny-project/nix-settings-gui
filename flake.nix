@@ -88,7 +88,6 @@
         );
 
         nativeBuildInputs = with pkgs; [
-          (lib.getBin bash)
           pkg-config
           mold
           wrapGAppsHook4
