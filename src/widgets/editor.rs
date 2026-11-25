@@ -37,7 +37,10 @@ pub enum Editor {
         combo: gtk::DropDown,
         choices: Vec<String>,
     },
-    Spin(gtk::SpinButton),
+    Spin {
+        root: gtk::Box,
+        spin: gtk::SpinButton,
+    },
     Slider(gtk::Scale),
     Text(gtk::Entry),
     Multiline {
@@ -189,7 +192,7 @@ impl Editor {
         match self {
             Editor::Switch(w) => w.clone().upcast(),
             Editor::Dropdown { combo, .. } => combo.clone().upcast(),
-            Editor::Spin(w) => w.clone().upcast(),
+            Editor::Spin { root, .. } => root.clone().upcast(),
             Editor::Slider(w) => w.clone().upcast(),
             Editor::Text(w) => w.clone().upcast(),
             Editor::Multiline { root, .. } => root.clone().upcast(),
@@ -234,7 +237,7 @@ impl Editor {
                 .get(combo.selected() as usize)
                 .cloned()
                 .unwrap_or_else(|| quote("")),
-            Editor::Spin(w) => number_literal(w.value(), w.digits()),
+            Editor::Spin { spin, .. } => number_literal(spin.value(), spin.digits()),
             Editor::Slider(w) => number_literal(w.value(), w.digits() as u32),
             Editor::Text(w) => string_literal(&w.text()),
             Editor::Multiline { view, .. } => {
@@ -370,8 +373,8 @@ impl Editor {
         match self {
             Editor::StyleChoice { choice, .. } => choice.unchanged(original),
             Editor::Switch(w) => w.is_active() == truthy(original),
-            Editor::Spin(w) => match original.trim().parse::<f64>() {
-                Ok(v) => (w.value() - v).abs() < 1e-9,
+            Editor::Spin { spin, .. } => match original.trim().parse::<f64>() {
+                Ok(v) => (spin.value() - v).abs() < 1e-9,
                 Err(_) => self.to_nix().trim() == original.trim(),
             },
             Editor::Slider(w) => match original.trim().parse::<f64>() {
@@ -567,9 +570,9 @@ impl Editor {
                 let update = update.clone();
                 combo.connect_selected_notify(move |_| update());
             }
-            Editor::Spin(widget) => {
+            Editor::Spin { spin, .. } => {
                 let update = update.clone();
-                widget.connect_value_changed(move |_| update());
+                spin.connect_value_changed(move |_| update());
             }
             Editor::Slider(widget) => {
                 let update = update.clone();

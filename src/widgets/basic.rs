@@ -62,7 +62,7 @@ fn dropdown_literals(choices: &[String], literal: fn(&str) -> String) -> Vec<Str
     choices.iter().map(|choice| literal(choice)).collect()
 }
 
-pub(crate) fn build_spin(spec: &OptionSpec, value_text: &str) -> gtk::SpinButton {
+pub(crate) fn build_spin(spec: &OptionSpec, value_text: &str) -> Editor {
     let min = spec.min.unwrap_or(-1.0e15);
     let max = spec.max.unwrap_or(1.0e15);
     let step = spec.step.unwrap_or(1.0);
@@ -71,19 +71,17 @@ pub(crate) fn build_spin(spec: &OptionSpec, value_text: &str) -> gtk::SpinButton
     spin.set_digits(spec.digits.unwrap_or(default_digits));
     spin.set_value(value_text.trim().parse::<f64>().unwrap_or(0.0));
     spin.set_halign(gtk::Align::Start);
+
+    let root = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    root.set_halign(gtk::Align::Start);
+    root.append(&spin);
     if let Some(unit) = non_empty(spec.unit.as_deref()) {
-        let input_unit = unit.clone();
-        spin.connect_output(move |spin| {
-            spin.set_text(&format_with_unit(spin.value(), spin.digits(), &input_unit));
-            glib::Propagation::Stop
-        });
-        spin.connect_input(move |spin| {
-            let text = spin.text();
-            let number = text.split_whitespace().next().unwrap_or("");
-            number.parse::<f64>().ok().map(Ok)
-        });
+        let label = gtk::Label::new(Some(unit.as_str()));
+        label.add_css_class("dim-label");
+        label.set_valign(gtk::Align::Center);
+        root.append(&label);
     }
-    spin
+    Editor::Spin { root, spin }
 }
 
 pub(crate) fn build_slider(spec: &OptionSpec, value_text: &str) -> gtk::Scale {

@@ -75,7 +75,7 @@ const INLINE_LAYOUT_ENABLED: bool = false;
 /// stacks the widget below the label and fills the width.
 fn control_is_inline(editor: &Editor) -> bool {
     match editor {
-        Editor::Switch(_) | Editor::Spin(_) => true,
+        Editor::Switch(_) | Editor::Spin { .. } => true,
         Editor::Dropdown { choices, .. } => {
             choices.iter().map(|c| c.chars().count()).max().unwrap_or(0) < 24
         }

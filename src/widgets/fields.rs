@@ -99,7 +99,7 @@ fn build_dropdown_combo(choices: &[String], selected: usize) -> gtk::DropDown {
 pub(crate) fn field_has_content(editor: &Editor) -> bool {
     match editor {
         Editor::Switch(w) => w.is_active(),
-        Editor::Spin(w) => w.value() != 0.0,
+        Editor::Spin { spin, .. } => spin.value() != 0.0,
         Editor::Text(w) => !w.text().is_empty(),
         Editor::Path(w) => !w.text().is_empty(),
         Editor::List { entries, .. } | Editor::ModuleList { entries, .. } => {
@@ -192,7 +192,7 @@ pub(crate) fn editor_snapshot(editor: &Editor) -> String {
     match editor {
         Editor::Text(w) | Editor::Path(w) => w.text().to_string(),
         Editor::Switch(w) => w.is_active().to_string(),
-        Editor::Spin(w) => w.value().to_string(),
+        Editor::Spin { spin, .. } => spin.value().to_string(),
         Editor::Dropdown { combo, choices } => choices
             .get(combo.selected() as usize)
             .cloned()
@@ -208,9 +208,9 @@ pub(crate) fn editor_restore(editor: &Editor, value: &str) {
     match editor {
         Editor::Text(w) | Editor::Path(w) => w.set_text(value),
         Editor::Switch(w) => w.set_active(value == "true"),
-        Editor::Spin(w) => {
+        Editor::Spin { spin, .. } => {
             if let Ok(number) = value.parse::<f64>() {
-                w.set_value(number);
+                spin.set_value(number);
             }
         }
         Editor::Dropdown { combo, choices } => {

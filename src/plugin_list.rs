@@ -574,7 +574,7 @@ fn build_plugin_child(id: &str, record: &Record, ctx: &BuildContext) -> Editor {
                 min: Some(0.0),
                 ..OptionSpec::default()
             };
-            Editor::Spin(build_spin(&spec, &record.value))
+            build_spin(&spec, &record.value)
         }
         Some(PluginFieldKind::Text) => {
             Editor::Text(build_entry(&record.value, &OptionSpec::default(), false))

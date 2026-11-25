@@ -102,7 +102,7 @@ fn build_editor(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> 
             let choices = resolve_choices(spec, type_str);
             build_dropdown(&choices, value_text)
         }
-        WidgetKind::Spin => Editor::Spin(build_spin(spec, value_text)),
+        WidgetKind::Spin => build_spin(spec, value_text),
         WidgetKind::Slider => Editor::Slider(build_slider(spec, value_text)),
         WidgetKind::Text => Editor::Text(build_entry(value_text, spec, false)),
         WidgetKind::Multiline => {
