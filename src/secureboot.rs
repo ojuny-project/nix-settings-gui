@@ -645,7 +645,7 @@ mod tests {
 
     #[test]
     fn keeps_output_from_a_nonzero_exit() {
-        let output = run("sh", &["-c", "echo hello; exit 1"]).unwrap();
+        let output = run("bash", &["-c", "echo hello; exit 1"]).unwrap();
         assert_eq!(output.trim(), "hello");
     }
 
