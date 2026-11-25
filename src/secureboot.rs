@@ -5,7 +5,7 @@
 //! `sbctl`; `app::secureboot` is the only caller that also writes files.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use serde::{Deserialize, Serialize};
 
@@ -229,6 +229,10 @@ fn run(tool: &str, args: &[&str]) -> Result<String, String> {
                 .output()
         })
         .map_err(|error| format!("cannot run {tool}: {error}"))?;
+    output_text(tool, &output)
+}
+
+fn output_text(tool: &str, output: &Output) -> Result<String, String> {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     if !stdout.trim().is_empty() {
         // `bootctl status` exits non-zero when it cannot read the ESP, but it
@@ -632,6 +636,9 @@ pub fn config_block() -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
+
     use super::*;
 
     #[test]
@@ -645,9 +652,22 @@ mod tests {
 
     #[test]
     fn keeps_output_from_a_nonzero_exit() {
-        let existing = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
-        let output = run("ls", &[existing, "/nix-settings-gui-no-such-file"]).unwrap();
-        assert!(output.contains("Cargo.toml"));
+        let output = Output {
+            status: ExitStatus::from_raw(1 << 8),
+            stdout: b"hello\n".to_vec(),
+            stderr: Vec::new(),
+        };
+        assert_eq!(output_text("tool", &output).unwrap(), "hello\n");
+    }
+
+    #[test]
+    fn reports_stderr_when_a_nonzero_exit_prints_nothing() {
+        let output = Output {
+            status: ExitStatus::from_raw(1 << 8),
+            stdout: Vec::new(),
+            stderr: b"tool refused\n".to_vec(),
+        };
+        assert_eq!(output_text("tool", &output).unwrap_err(), "tool refused");
     }
 
     #[test]
