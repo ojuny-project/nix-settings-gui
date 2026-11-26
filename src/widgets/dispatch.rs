@@ -111,8 +111,13 @@ fn build_editor(record: &Record, type_str: Option<&str>, ctx: &BuildContext) -> 
         }
         WidgetKind::Path => Editor::Path(build_entry(value_text, spec, false)),
         WidgetKind::Package => build_package_editor(value_text, spec, ctx.search.as_ref()),
-        WidgetKind::Packages => build_list(value_text, true, ctx.search.as_ref()),
-        WidgetKind::List => build_list(value_text, false, None),
+        WidgetKind::Packages => build_list(value_text, true, ctx.search.as_ref(), true),
+        WidgetKind::List => build_list(
+            value_text,
+            false,
+            None,
+            spec.item_type.as_deref() == Some("string"),
+        ),
         WidgetKind::NixosModules => {
             build_module_list(value_text, ModuleKind::Nixos, &ctx.nixos_modules, record)
         }

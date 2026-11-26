@@ -473,6 +473,9 @@ pub struct OptionSpec {
     pub pattern: Option<String>,
     pub item_label: Option<String>,
     pub add_label: Option<String>,
+    /// How a list row is serialized: `expression` keeps the current literal
+    /// behavior, `string` quotes each row as text.
+    pub item_type: Option<String>,
     pub visible_when: Option<Visibility>,
     /// Directory holding wallpaper images, relative to the file containing the
     /// option. Defaults to `./wallpapers`.
@@ -557,6 +560,7 @@ impl OptionSpec {
             pattern: d.string("pattern"),
             item_label: d.string("itemLabel"),
             add_label: d.string("addLabel"),
+            item_type: d.string("itemType"),
             visible_when: parse_visibility(d),
             wallpaper_dir: d.string("wallpaperDir"),
             preset_source: d.string("presetSource"),

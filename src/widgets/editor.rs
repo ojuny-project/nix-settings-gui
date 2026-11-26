@@ -56,6 +56,7 @@ pub enum Editor {
         root: gtk::Box,
         entries: Rc<RefCell<Vec<gtk::Entry>>>,
         packages: bool,
+        string_items: bool,
     },
     ModuleList {
         root: gtk::Box,
@@ -247,7 +248,10 @@ impl Editor {
             Editor::Path(w) => path_literal(&w.text()),
             Editor::Package { entry, .. } => package_literal(&entry.text()),
             Editor::List {
-                entries, packages, ..
+                entries,
+                packages,
+                string_items,
+                ..
             } => {
                 let raw: Vec<String> = entries
                     .borrow()
@@ -257,12 +261,7 @@ impl Editor {
                 if *packages {
                     package_items(&raw)
                 } else {
-                    let items: Vec<String> = raw
-                        .iter()
-                        .map(|t| expr_literal(t))
-                        .filter(|t| !t.is_empty() && t != "\"\"")
-                        .collect();
-                    value::serialize_list(&items)
+                    serialize_list_items(&raw, *string_items)
                 }
             }
             Editor::ModuleList {
@@ -708,5 +707,38 @@ impl Editor {
                 }
             }
         }
+    }
+}
+
+pub(crate) fn serialize_list_items(raw: &[String], string_items: bool) -> String {
+    let items: Vec<String> = raw
+        .iter()
+        .map(|text| {
+            if string_items {
+                string_literal(text)
+            } else {
+                expr_literal(text)
+            }
+        })
+        .filter(|text| !text.is_empty() && text != "\"\"")
+        .collect();
+    value::serialize_list(&items)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn string_items_are_quoted_and_expression_items_are_not() {
+        let prose = vec!["Welcome to Ojuny".to_string()];
+        assert_eq!(
+            serialize_list_items(&prose, true),
+            "[ \"Welcome to Ojuny\" ]"
+        );
+        assert_eq!(
+            serialize_list_items(&prose, false),
+            "[ Welcome to Ojuny ]"
+        );
     }
 }

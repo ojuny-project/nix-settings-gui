@@ -105,50 +105,50 @@
             pname ? "nix-settings-gui",
           }:
           pkgs.rustPlatform.buildRustPackage {
-          pname = pname;
-          version = "0.1.0";
-          src = lib.fileset.toSource {
-            root = ./.;
-            fileset = lib.fileset.unions [
-              (lib.fileset.fileFilter (f: f.hasExt "rs") ./.)
-              (lib.fileset.fileFilter (
-                f:
-                f.name == "Cargo.toml"
-                || f.name == "Cargo.lock"
-                || f.name == "org.nix_settings_gui.NixSettingsGui.desktop"
-              ) ./.)
-              ./assets
-              ./modules
-              ./src
-              ./tests
-            ];
+            pname = pname;
+            version = "0.1.0";
+            src = lib.fileset.toSource {
+              root = ./.;
+              fileset = lib.fileset.unions [
+                (lib.fileset.fileFilter (f: f.hasExt "rs") ./.)
+                (lib.fileset.fileFilter (
+                  f:
+                  f.name == "Cargo.toml"
+                  || f.name == "Cargo.lock"
+                  || f.name == "org.nix_settings_gui.NixSettingsGui.desktop"
+                ) ./.)
+                ./assets
+                ./modules
+                ./src
+                ./tests
+              ];
+            };
+            cargoLock.lockFile = ./Cargo.lock;
+            cargoBuildFlags = lib.optionals (!withOjunyWidgets) [ "--no-default-features" ];
+
+            TINTED_SCHEMES_DIR = "${tinted-theming}";
+
+            RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
+            inherit nativeBuildInputs buildInputs;
+
+            doCheck = true;
+
+            preFixup = ''
+              gappsWrapperArgs+=(--prefix PATH : "${runtimePath}")
+            '';
+
+            postInstall = ''
+              install -Dm644 ${./org.nix_settings_gui.NixSettingsGui.desktop} \
+                "$out/share/applications/org.nix_settings_gui.NixSettingsGui.desktop"
+            '';
+
+            meta = with lib; {
+              description = "A comment-driven settings GUI for Nix";
+              mainProgram = "nix-settings-gui";
+              license = licenses.gpl3Plus;
+              platforms = platforms.linux;
+            };
           };
-          cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildFlags = lib.optionals (!withOjunyWidgets) [ "--no-default-features" ];
-
-          TINTED_SCHEMES_DIR = "${tinted-theming}";
-
-          RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
-          inherit nativeBuildInputs buildInputs;
-
-          doCheck = true;
-
-          preFixup = ''
-            gappsWrapperArgs+=(--prefix PATH : "${runtimePath}")
-          '';
-
-          postInstall = ''
-            install -Dm644 ${./org.nix_settings_gui.NixSettingsGui.desktop} \
-              "$out/share/applications/org.nix_settings_gui.NixSettingsGui.desktop"
-          '';
-
-          meta = with lib; {
-            description = "A comment-driven settings GUI for Nix";
-            mainProgram = "nix-settings-gui";
-            license = licenses.gpl3Plus;
-            platforms = platforms.linux;
-          };
-        };
 
         nix-settings-gui = mkPackage { };
         nix-settings-gui-minimal = mkPackage {
@@ -167,10 +167,7 @@
               nix-settings-gui-binary = mkBinary { inherit system; };
             }
             // (
-              if
-                binaryInfo.releases.${binaryInfo.latest}.packages
-                ? nix-settings-gui-minimal
-              then
+              if binaryInfo.releases.${binaryInfo.latest}.packages ? nix-settings-gui-minimal then
                 {
                   nix-settings-gui-minimal-binary = mkBinary {
                     inherit system;
@@ -207,6 +204,30 @@
           }/bin/ci";
         };
 
+        checks.tests = nix-settings-gui;
+
+        checks.gui = nix-settings-gui.overrideAttrs (old: {
+          nativeBuildInputs = old.nativeBuildInputs ++ [
+            pkgs.gnugrep
+            pkgs.gnused
+            pkgs.xvfb-run
+          ];
+          preCheck = (old.preCheck or "") + ''
+            export XDG_RUNTIME_DIR="$(mktemp -d)"
+            export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share:${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:''${XDG_DATA_DIRS:-}"
+          '';
+          checkPhase = ''
+            runHook preCheck
+            tests="$(cargo test --release --locked -- --ignored --list \
+              | sed -n 's/: test$//p' \
+              | grep -v -e 'metadata::tests::loads_' -e 'plugin_schema::tests::parses_the_real_bar_dropdown_settings')"
+            for test in $tests; do
+              xvfb-run -a cargo test --release --locked -- --exact "$test" --include-ignored
+            done
+            runHook postCheck
+          '';
+        });
+
         checks.minimal = pkgs.runCommand "check-minimal" { } ''
           echo ${self.packages.${system}.nix-settings-gui-minimal} >/dev/null
           touch $out
@@ -214,6 +235,8 @@
 
         checks.default = pkgs.runCommand "check-default" { } ''
           echo ${self.packages.${system}.default} >/dev/null
+          echo ${self.checks.${system}.tests} >/dev/null
+          echo ${self.checks.${system}.gui} >/dev/null
           touch $out
         '';
 

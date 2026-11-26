@@ -71,6 +71,7 @@ pub(crate) fn build_spin(spec: &OptionSpec, value_text: &str) -> Editor {
     spin.set_digits(spec.digits.unwrap_or(default_digits));
     spin.set_value(value_text.trim().parse::<f64>().unwrap_or(0.0));
     spin.set_halign(gtk::Align::Start);
+    attach_focus_gated_scroll(spin.upcast_ref());
 
     let root = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     root.set_halign(gtk::Align::Start);
@@ -99,7 +100,7 @@ pub(crate) fn build_slider(spec: &OptionSpec, value_text: &str) -> gtk::Scale {
             format_with_unit(value, scale.digits() as u32, &unit)
         });
     }
-    attach_focus_gated_scroll(&scale);
+    attach_focus_gated_scroll(scale.upcast_ref());
     scale
 }
 
@@ -135,10 +136,10 @@ fn forwarded_scroll_delta(delta: f64, unit: gtk::gdk::ScrollUnit, page_size: f64
 /// A wheel tick over a slider moves the value only while the slider has GTK
 /// focus; otherwise the tick is forwarded to the nearest ancestor
 /// ScrolledWindow so the page scrolls under the pointer.
-fn attach_focus_gated_scroll(scale: &gtk::Scale) {
+fn attach_focus_gated_scroll(widget: &gtk::Widget) {
     let controller = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
     controller.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let for_handler = scale.clone();
+    let for_handler = widget.clone();
     controller.connect_scroll(move |controller, dx, dy| {
         if for_handler.has_focus() {
             return glib::Propagation::Proceed;
@@ -146,14 +147,14 @@ fn attach_focus_gated_scroll(scale: &gtk::Scale) {
         forward_scroll(&for_handler, controller, dx, dy);
         glib::Propagation::Stop
     });
-    scale.add_controller(controller);
+    widget.add_controller(controller);
 }
 
 /// Deliver a stopped tick to the first ScrolledWindow ancestor. With no
 /// ScrolledWindow ancestor (e.g. a slider in a non-scrollable popover) the
 /// tick is dropped and the value stays untouched.
-fn forward_scroll(scale: &gtk::Scale, controller: &gtk::EventControllerScroll, dx: f64, dy: f64) {
-    let mut current = scale.parent();
+fn forward_scroll(widget: &gtk::Widget, controller: &gtk::EventControllerScroll, dx: f64, dy: f64) {
+    let mut current = widget.parent();
     while let Some(ancestor) = current {
         if let Ok(scrolled) = ancestor.clone().downcast::<gtk::ScrolledWindow>() {
             let vadj = scrolled.vadjustment();
@@ -249,6 +250,7 @@ pub(crate) fn build_list(
     value_text: &str,
     packages: bool,
     search: Option<&PackageSearch>,
+    string_items: bool,
 ) -> Editor {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
     root.set_hexpand(true);
@@ -272,6 +274,7 @@ pub(crate) fn build_list(
         root,
         entries,
         packages,
+        string_items,
     }
 }
 

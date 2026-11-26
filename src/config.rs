@@ -47,15 +47,17 @@ pub struct AppConfig {
     pub flake_path: Option<String>,
     #[serde(default)]
     pub terminal_command: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_rebuild_command")]
     pub rebuild_command: Option<String>,
+    #[serde(default)]
+    pub environment_reload_command: Option<String>,
     #[serde(default)]
     pub recent_flake_paths: Vec<String>,
     #[serde(default = "default_true")]
     pub live_apply: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub reload_mango_on_rebuild: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub reload_dms_on_rebuild: bool,
     #[serde(default)]
     pub expand_details_by_default: bool,
@@ -69,12 +71,17 @@ fn default_true() -> bool {
     true
 }
 
+fn default_rebuild_command() -> Option<String> {
+    Some("ojuny rebuild".to_string())
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             flake_path: None,
             terminal_command: None,
-            rebuild_command: None,
+            rebuild_command: Some("ojuny rebuild".to_string()),
+            environment_reload_command: None,
             recent_flake_paths: Vec::new(),
             live_apply: true,
             reload_mango_on_rebuild: false,
@@ -101,6 +108,18 @@ impl AppConfig {
             .unwrap_or_default();
         if config.flake_path.is_none() {
             config.flake_path = system_flake_path();
+        }
+        if config.environment_reload_command.is_none() {
+            let mut commands = Vec::new();
+            if config.reload_mango_on_rebuild {
+                commands.push("mmsg dispatch reload_config");
+            }
+            if config.reload_dms_on_rebuild {
+                commands.push("dms kill && mmsg dispatch spawn_shell,dms run");
+            }
+            if !commands.is_empty() {
+                config.environment_reload_command = Some(commands.join(" && "));
+            }
         }
         config
     }
@@ -159,10 +178,33 @@ mod tests {
     fn defaults_enable_live_apply() {
         let config = AppConfig::default();
         assert!(config.live_apply);
-        assert!(!config.reload_mango_on_rebuild);
-        assert!(!config.reload_dms_on_rebuild);
+        assert!(config.environment_reload_command.is_none());
+        assert_eq!(config.rebuild_command.as_deref(), Some("ojuny rebuild"));
         assert!(!config.expand_details_by_default);
         assert!(!config.auto_git_sync);
+    }
+
+    #[test]
+    fn migrates_old_reload_switches() {
+        let config: AppConfig =
+            serde_json::from_str(r#"{"reload_dms_on_rebuild":true}"#).unwrap();
+        let mut loaded = config;
+        if loaded.environment_reload_command.is_none() {
+            let mut commands = Vec::new();
+            if loaded.reload_mango_on_rebuild {
+                commands.push("mmsg dispatch reload_config");
+            }
+            if loaded.reload_dms_on_rebuild {
+                commands.push("dms kill && mmsg dispatch spawn_shell,dms run");
+            }
+            if !commands.is_empty() {
+                loaded.environment_reload_command = Some(commands.join(" && "));
+            }
+        }
+        assert_eq!(
+            loaded.environment_reload_command.as_deref(),
+            Some("dms kill && mmsg dispatch spawn_shell,dms run")
+        );
     }
 
     #[test]
@@ -197,9 +239,9 @@ mod tests {
         let mut config = AppConfig::default();
         config.remember("/tmp/flake");
         config.terminal_command = Some("ghostty -e zsh -c '{cmd}'".into());
+        config.environment_reload_command =
+            Some("dms kill && mmsg dispatch spawn_shell,dms run".into());
         config.live_apply = false;
-        config.reload_mango_on_rebuild = true;
-        config.reload_dms_on_rebuild = true;
         config.expand_details_by_default = true;
         config.auto_git_sync = true;
         config.view_mode = ViewMode::Categories;
@@ -208,8 +250,10 @@ mod tests {
         assert_eq!(back.flake_path, config.flake_path);
         assert_eq!(back.terminal_command, config.terminal_command);
         assert_eq!(back.live_apply, config.live_apply);
-        assert_eq!(back.reload_mango_on_rebuild, config.reload_mango_on_rebuild);
-        assert_eq!(back.reload_dms_on_rebuild, config.reload_dms_on_rebuild);
+        assert_eq!(
+            back.environment_reload_command,
+            config.environment_reload_command
+        );
         assert_eq!(
             back.expand_details_by_default,
             config.expand_details_by_default

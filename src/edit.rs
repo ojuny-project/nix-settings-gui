@@ -17,6 +17,26 @@ pub struct PendingEdit {
 /// end backwards so earlier offsets stay valid, parse-checked with `rnix`,
 /// formatted with `nixfmt`, and written atomically. If any file fails to parse
 /// nothing is written and an error is returned, so the batch is all-or-nothing.
+fn parse_error_offset(error: &rnix::parser::ParseError) -> Option<usize> {
+    use rnix::parser::ParseError as Error;
+    let range = match error {
+        Error::Unexpected(range)
+        | Error::UnexpectedExtra(range)
+        | Error::UnexpectedDoubleBind(range) => *range,
+        Error::UnexpectedWanted(_, range, _) => *range,
+        Error::DuplicatedArgs(range, _) => *range,
+        _ => return None,
+    };
+    Some(usize::from(range.start()))
+}
+
+fn line_column(text: &str, offset: usize) -> (usize, usize) {
+    let prefix = &text[..offset.min(text.len())];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = prefix.rsplit('\n').next().unwrap_or("").chars().count() + 1;
+    (line, column)
+}
+
 pub fn apply(edits: &[PendingEdit], root: &str) -> Result<usize, String> {
     let mut by_file: BTreeMap<&str, Vec<&PendingEdit>> = BTreeMap::new();
     for edit in edits {
@@ -30,20 +50,53 @@ pub fn apply(edits: &[PendingEdit], root: &str) -> Result<usize, String> {
     for (file, file_edits) in &by_file {
         let mut text =
             std::fs::read_to_string(file).map_err(|e| format!("cannot read {file}: {e}"))?;
-        let mut ordered = file_edits.clone();
-        ordered.sort_by_key(|a| std::cmp::Reverse(a.start));
-        for edit in ordered {
+        let mut unique: Vec<&PendingEdit> = Vec::new();
+        for edit in file_edits {
             if edit.start > edit.end || edit.end > text.len() {
                 return Err(format!(
                     "span {}..{} out of range for {file}",
                     edit.start, edit.end
                 ));
             }
+            if let Some(existing) = unique
+                .iter()
+                .find(|candidate| candidate.start == edit.start && candidate.end == edit.end)
+            {
+                if existing.value != edit.value {
+                    return Err(format!(
+                        "{file}:{}..{} has conflicting values: {} and {}; nothing written",
+                        edit.start, edit.end, existing.value, edit.value
+                    ));
+                }
+                continue;
+            }
+            if let Some(existing) = unique
+                .iter()
+                .find(|candidate| candidate.start < edit.end && edit.start < candidate.end)
+            {
+                return Err(format!(
+                    "{file}: edits {}..{} and {}..{} overlap; nothing written",
+                    existing.start, existing.end, edit.start, edit.end
+                ));
+            }
+            unique.push(edit);
+        }
+
+        let mut ordered = unique;
+        ordered.sort_by_key(|a| std::cmp::Reverse(a.start));
+        for edit in ordered {
             text.replace_range(edit.start..edit.end, &edit.value);
         }
-        if rnix::Root::parse(&text).ok().is_err() {
+        let parsed = rnix::Root::parse(&text);
+        if let Some(error) = parsed.errors().first() {
+            if let Some(offset) = parse_error_offset(error) {
+                let (line, column) = line_column(&text, offset);
+                return Err(format!(
+                    "edit would make {file}:{line}:{column} unparseable: {error}; nothing written"
+                ));
+            }
             return Err(format!(
-                "edit would make {file} unparseable; nothing written"
+                "edit would make {file} unparseable: {error}; nothing written"
             ));
         }
         staged.push((file, text));
@@ -242,8 +295,58 @@ mod tests {
             end: start + 1,
             value: "{".to_string(),
         }];
-        assert!(apply(&edits, &root_dir).is_err());
+        let error = apply(&edits, &root_dir).unwrap_err();
+        assert!(error.contains("unparseable"), "{error}");
+        assert!(error.contains("cfg.nix:"), "{error}");
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn deduplicates_identical_spans_and_rejects_conflicts() {
+        let dir = std::env::temp_dir().join(format!("nsg-edit-span-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let root_dir = dir.display().to_string();
+        let file = dir.join("cfg.nix");
+        let original = "{ ... }: {\n  a = 1;\n}\n";
+        std::fs::write(&file, original).unwrap();
+        let path = file.display().to_string();
+        let start = original.find('1').unwrap();
+
+        let same = vec![
+            PendingEdit {
+                file: path.clone(),
+                start,
+                end: start + 1,
+                value: "2".to_string(),
+            },
+            PendingEdit {
+                file: path.clone(),
+                start,
+                end: start + 1,
+                value: "2".to_string(),
+            },
+        ];
+        assert_eq!(apply(&same, &root_dir).unwrap(), 1);
+        assert!(std::fs::read_to_string(&file).unwrap().contains("a = 2;"));
+
+        let conflict = vec![
+            PendingEdit {
+                file: path.clone(),
+                start,
+                end: start + 1,
+                value: "3".to_string(),
+            },
+            PendingEdit {
+                file: path.clone(),
+                start,
+                end: start + 1,
+                value: "4".to_string(),
+            },
+        ];
+        let error = apply(&conflict, &root_dir).unwrap_err();
+        assert!(error.contains("conflicting values"), "{error}");
+        assert!(std::fs::read_to_string(&file).unwrap().contains("a = 2;"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

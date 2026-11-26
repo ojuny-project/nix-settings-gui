@@ -656,7 +656,9 @@ fn load_preview(path: PathBuf, done: impl FnOnce(Option<gdk::Texture>) + 'static
 }
 
 fn append_preview(host: &gtk::Box, path: &Path, fallback: &impl Fn() -> gtk::Image) {
-    host.append(&fallback());
+    let placeholder = fallback();
+    placeholder.set_tooltip_text(Some("Preview unavailable"));
+    host.append(&placeholder);
     let host = host.clone();
     load_preview(path.to_path_buf(), move |texture| {
         let Some(texture) = texture else {

@@ -71,6 +71,17 @@ mod tests {
     }
 
     #[test]
+    fn shipped_catalog_packages_parse() {
+        for entry in fonts().iter().chain(icon_themes()).chain(cursor_themes()) {
+            assert!(
+                rnix::Root::parse(&entry.package).errors().is_empty(),
+                "{} does not parse",
+                entry.package
+            );
+        }
+    }
+
+    #[test]
     fn shipped_catalog_has_previews() {
         assert!(fonts().len() >= 40);
         assert!(icon_themes().len() >= 10);

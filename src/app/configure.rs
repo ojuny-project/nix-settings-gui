@@ -16,6 +16,7 @@ pub(super) struct ConfigureForm {
     flake_entry: gtk::Entry,
     terminal_entry: gtk::Entry,
     rebuild_entry: gtk::Entry,
+    reload_entry: gtk::Entry,
     style_picker: gtk::DropDown,
 }
 
@@ -49,6 +50,12 @@ impl ConfigureForm {
         let rebuild_entry = gtk::Entry::new();
         rebuild_entry.set_text(config.rebuild_command.as_deref().unwrap_or(""));
         rebuild_entry.set_hexpand(true);
+        let reload_entry = gtk::Entry::new();
+        reload_entry.set_text(config.environment_reload_command.as_deref().unwrap_or(""));
+        reload_entry.set_hexpand(true);
+        reload_entry.set_placeholder_text(Some(
+            "Optional command run after a successful rebuild, for example dms kill && mmsg dispatch spawn_shell,dms run",
+        ));
 
         grid.attach(&gtk::Label::new(Some("Flake path")), 0, 0, 1, 1);
         grid.attach(&flake_row, 1, 0, 1, 1);
@@ -56,6 +63,8 @@ impl ConfigureForm {
         grid.attach(&terminal_entry, 1, 1, 1, 1);
         grid.attach(&gtk::Label::new(Some("Rebuild command")), 0, 2, 1, 1);
         grid.attach(&rebuild_entry, 1, 2, 1, 1);
+        grid.attach(&gtk::Label::new(Some("Environment reload command")), 0, 3, 1, 1);
+        grid.attach(&reload_entry, 1, 3, 1, 1);
 
         let style_picker = gtk::DropDown::from_strings(&["List", "Categories"]);
         style_picker.set_selected(style_index(config.view_mode));
@@ -69,8 +78,8 @@ impl ConfigureForm {
         let style_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
         style_box.append(&style_picker);
         style_box.append(&style_note);
-        grid.attach(&gtk::Label::new(Some("GUI style")), 0, 3, 1, 1);
-        grid.attach(&style_box, 1, 3, 1, 1);
+        grid.attach(&gtk::Label::new(Some("GUI style")), 0, 4, 1, 1);
+        grid.attach(&style_box, 1, 4, 1, 1);
 
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.append(&grid);
@@ -79,6 +88,7 @@ impl ConfigureForm {
             flake_entry,
             terminal_entry,
             rebuild_entry,
+            reload_entry,
             style_picker,
         }
     }
@@ -93,6 +103,8 @@ impl ConfigureForm {
             let mut config = app.config.borrow_mut();
             config.terminal_command = non_empty(self.terminal_entry.text().to_string());
             config.rebuild_command = non_empty(self.rebuild_entry.text().to_string());
+            config.environment_reload_command =
+                non_empty(self.reload_entry.text().to_string());
             config.view_mode = style_mode(self.style_picker.selected());
             if !flake.trim().is_empty() {
                 config.remember(flake.trim());
@@ -202,36 +214,6 @@ fn preferences(app: &Rc<App>) -> gtk::Box {
         "Expand setting details",
         "Show setting descriptions and import origins by default",
         &expand_details,
-    ));
-
-    let reload_mango = gtk::Switch::new();
-    reload_mango.set_active(config.reload_mango_on_rebuild);
-    {
-        let app = app.clone();
-        reload_mango.connect_active_notify(move |switch| {
-            app.config.borrow_mut().reload_mango_on_rebuild = switch.is_active();
-            let _ = app.config.borrow().save();
-        });
-    }
-    list.append(&super::preference_row(
-        "Reload mango after rebuild",
-        "Run mmsg dispatch reload_config after a successful rebuild",
-        &reload_mango,
-    ));
-
-    let reload_dms = gtk::Switch::new();
-    reload_dms.set_active(config.reload_dms_on_rebuild);
-    {
-        let app = app.clone();
-        reload_dms.connect_active_notify(move |switch| {
-            app.config.borrow_mut().reload_dms_on_rebuild = switch.is_active();
-            let _ = app.config.borrow().save();
-        });
-    }
-    list.append(&super::preference_row(
-        "Reload DMS after rebuild",
-        "Run dms kill && mmsg dispatch spawn_shell,dms run after a successful rebuild",
-        &reload_dms,
     ));
 
     let auto_git = gtk::Switch::new();

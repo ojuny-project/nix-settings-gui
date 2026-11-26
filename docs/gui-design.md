@@ -343,17 +343,16 @@ Stored in `~/.config/nix-settings-gui/config.json`:
 |--------------------|---------|
 | `flake_path`       | Path to the flake or config directory to open. |
 | `terminal_command` | Terminal prefix used to spawn the rebuild. |
-| `rebuild_command`  | Command run inside the terminal to rebuild. |
+| `rebuild_command`  | Command run inside the terminal to rebuild. The default is `ojuny rebuild`. |
+| `environment_reload_command` | Command the rebuild wrapper runs after a successful activation, before any terminal hold. |
 | `expand_details_by_default` | Open setting descriptions and import origins initially. |
 | `live_apply`       | Run each option's `applyCommand` as soon as it changes. |
-| `reload_mango_on_rebuild` | Append the mango reload command after a successful rebuild. |
-| `reload_dms_on_rebuild` | Append the DMS reload command after a successful rebuild. |
 | `auto_git_sync`    | Pull on open; offer a commit and push after Save. |
 | `view_mode`        | `list` or `categories` presentation. Defaults to `list`. A change applies on the next start. |
 
-The runtime preferences `live_apply`, `expand_details_by_default`,
-`reload_mango_on_rebuild`, `reload_dms_on_rebuild`, and `auto_git_sync` are
-toggled from the menu popover and saved here.
+The runtime preferences `live_apply`, `expand_details_by_default`, and
+`auto_git_sync` are toggled from the menu popover and saved here. The
+environment reload command is edited in the Configure form.
 
 The app runs `terminal_command` with `rebuild_command`. If `terminal_command`
 contains a `{cmd}` placeholder it is replaced; otherwise the rebuild command is
@@ -363,7 +362,8 @@ these two commands.
 Example (the maintainer's own setup):
 
 - `terminal_command = "ghostty -e zsh -c '{cmd}'"`
-- `rebuild_command = "sudo echo \"rebuilding\" && sudo nixos-rebuild boot --flake ~/repos/nixos-configs/dendrite#$(hostname) |& nom"`
+- `rebuild_command = "ojuny rebuild"`
+- `environment_reload_command = "dms kill && mmsg dispatch spawn_shell,dms run"`
 
 Recent flake paths are also persisted here for the open flow.
 

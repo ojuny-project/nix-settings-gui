@@ -135,17 +135,17 @@ After choosing a path, pick a widget and an initial value. The app writes the
 
 ## 8. Settings
 
-**Configure** edits the config file: the flake path, the terminal command, and
-the rebuild command. When no flake path is configured, the GUI reads
-`/etc/ojuny/flake-path`, the projection of Ojuny's `ojuny.repoPath` option.
-The rebuild runs `terminal_command` with
+**Configure** edits the config file: the flake path, the terminal command, the
+rebuild command, and the environment reload command. When no flake path is
+configured, the GUI reads `/etc/ojuny/flake-path`, the projection of Ojuny's
+`ojuny.repoPath` option. The rebuild runs `terminal_command` with
 `rebuild_command`; a `{cmd}` placeholder is replaced, otherwise the rebuild
-command is appended. Privilege escalation is expressed entirely in those two
-commands.
+command is appended. The default rebuild command is `ojuny rebuild`, which
+runs the environment reload command after a successful activation, before any
+terminal hold. Privilege escalation is expressed entirely in those commands.
 
 The menu popover also holds the runtime preferences: apply changes immediately,
-expand setting details, reload mango or DMS after a rebuild, and sync git on
-open and save.
+expand setting details, and sync git on open and save.
 
 ## 9. When nixd is missing
 

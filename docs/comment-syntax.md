@@ -100,6 +100,7 @@ services.pipewire.enable = true;
 | `visibleWhen.notEquals` | literal | Value the governing option must not equal. |
 | `applyCommand` | string     | Shell command that applies the option immediately, without saving. |
 | `wallpaperDir` | string     | Directory holding wallpaper images, relative to the file containing the option. Defaults to `./wallpapers`. |
+| `itemType` | `expression` or `string` | How a `list` row is serialized. `expression` keeps the literal behavior; `string` quotes every row as text. Defaults to `expression`. |
 | `presetSource` | string | Flake input that declares wallpaper presets. When set, the wallpaper picker lists that input's presets before the images in `wallpaperDir`. |
 | `presetOption` | string | Dotted option path inside the target configuration that holds the generated wallpaper set, e.g. `desktop.ojuny.wallpaper`. |
 | `bindFields` | list of strings | Ordered fields shown by `keybinds`. Defaults to `modifier`, `keys`, `dispatcher`, `args`, `description`, `group`, `subcat`. |
@@ -303,7 +304,7 @@ its own interface, such as a Dux Modular Shell or mango IPC call.
 | `font` | Searchable font chooser with live or baked previews | font family string |
 | `icon-theme` | Searchable icon theme chooser with icon previews | theme directory name string |
 | `cursor-theme` | Searchable cursor theme chooser with cursor previews | theme directory name string |
-| `wallpaper` | Horizontally scrolling wallpaper previews | `null`, a preset name, or a path string |
+| `wallpaper` | Horizontally scrolling wallpaper previews | a preset name or a path string; `null` is only a valid tile when `nullable = true` |
 | `file` | File picker with image/text preview, multi-file upload and delete | a path string or `null` |
 | `menu` | Nestable tree of menu entries | dotted-id keyed attribute set |
 | `plugins` | Plugin list with a settings form | name-keyed attribute set |
@@ -413,7 +414,7 @@ shape.
 | `font` | a font family option, e.g. `stylix.fonts.monospace.name` | An inline search list with previews. The shipped catalog contains Nixpkgs font families, including Nerd Fonts; an `Installed only` toggle hides entries that are not installed. Selecting an entry writes the family and the package named by `packageOption`. `monospace = true` filters the list. |
 | `icon-theme` | an icon theme option, e.g. `stylix.icons.dark` | An inline search list with live sample icons for installed themes and baked preview sheets for uninstalled themes. An `Installed only` toggle hides entries that are not installed. Selecting an entry writes the theme and the package named by `packageOption`; `variant` filters dark or light entries. |
 | `cursor-theme` | `stylix.cursor.name` | An inline search list with decoded cursor previews for installed themes and baked preview sheets for uninstalled themes. An `Installed only` toggle hides entries that are not installed. Selecting an entry writes the theme and the package named by `packageOption`. |
-| `wallpaper` | the wallpaper option | `null` for the default preset, a preset name, or a path to an image. With `presetSource`, the strip starts with that input's presets; with `presetOption`, it also reads the generated themed set at that path. Images in `wallpaperDir` follow. Added files are copied into `wallpaperDir` and staged with `git add`; preset tiles are not removable. |
+| `wallpaper` | the wallpaper option | a preset name or a path to an image. With `presetSource`, the strip starts with that input's presets; with `presetOption`, it also reads the generated themed set at that path. Images in `wallpaperDir` follow. Added files are copied into `wallpaperDir` and staged with `git add`; preset tiles are not removable. An Auto tile appears only when `nullable = true`. |
 | `menu` | `dankMenu.menu` | an attribute set keyed by dotted id. Splits the id on `.` and renders a nestable tree; leaves are editable rows. |
 | `plugins` | `desktop.ojuny.dux.plugins` | a name-keyed attribute set of `{ enable; src; settings; dir; config; }`. `settings` renders as `raw` unless annotated as a typed submodule. |
 | `bar` | `barConfigs` | a name-keyed attribute set with id-keyed `left`/`center`/`right` widget lists plus layout and appearance. |

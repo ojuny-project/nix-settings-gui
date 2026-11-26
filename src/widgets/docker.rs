@@ -485,13 +485,13 @@ fn make_docker_row(
         content.append(&field_block("Image", &image));
     }
 
-    let ports = build_list(&string_list(&fields.ports), false, None);
+    let ports = build_list(&string_list(&fields.ports), false, None, true);
     ports.connect_changed(notify);
     if !schema.ports.trim().is_empty() {
         content.append(&field_block("Ports", &ports.root()));
     }
 
-    let volumes = build_list(&string_list(&fields.volumes), false, None);
+    let volumes = build_list(&string_list(&fields.volumes), false, None, true);
     volumes.connect_changed(notify);
     if !schema.volumes.trim().is_empty() {
         content.append(&field_block("Volumes", &volumes.root()));

@@ -154,8 +154,8 @@ plain value and quotes it for the shell.
 
 `config.rs` reads and writes `~/.config/nix-settings-gui/config.json`: the flake
 path, the terminal and rebuild commands, the recent flake paths, and the
-runtime preferences (`live_apply`, `reload_mango_on_rebuild`,
-`reload_dms_on_rebuild`, `expand_details_by_default`, `auto_git_sync`). It is
+runtime preferences (`live_apply`, `environment_reload_command`,
+`expand_details_by_default`, `auto_git_sync`). It is
 the only persistent state the app keeps.
 
 ### 8.1 Git sync

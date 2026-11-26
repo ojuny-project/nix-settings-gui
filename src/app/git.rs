@@ -20,21 +20,30 @@ fn current_branch(dir: &str) -> Result<String, String> {
     Ok(branch.to_string())
 }
 
-/// Pull the checked-out branch from `origin`, never an unrelated configured
-/// upstream.
-fn pull_args<'a>(branch: &'a str, ff_only: bool) -> Vec<&'a str> {
+/// Pull the checked-out branch from its configured upstream.
+fn pull_args(ff_only: bool) -> Vec<&'static str> {
     let mut args = vec!["pull", "--no-edit"];
     if ff_only {
         args.push("--ff-only");
     }
-    args.push("origin");
-    args.push(branch);
     args
 }
 
+fn upstream_ref(dir: &str) -> Result<String, String> {
+    let upstream = run_git(
+        dir,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    )?;
+    let upstream = upstream.trim();
+    if upstream.is_empty() {
+        return Err("the checked-out branch has no upstream".to_string());
+    }
+    Ok(upstream.to_string())
+}
+
 fn pull_branch(dir: &str, ff_only: bool) -> Result<(), String> {
-    let branch = current_branch(dir)?;
-    run_git(dir, &pull_args(&branch, ff_only)).map(|_| ())
+    current_branch(dir)?;
+    run_git(dir, &pull_args(ff_only)).map(|_| ())
 }
 
 /// Pull the flake directory, then report whether the tree is dirty or has
@@ -66,25 +75,35 @@ pub(super) fn pull(dir: &str) -> Result<(), String> {
 /// counts so a lookalike branch cannot masquerade as a synced one.
 fn fast_forward_error(dir: &str, error: String) -> String {
     if error.contains("fast-forward") {
-        let branch = current_branch(dir).unwrap_or_default();
-        if branch.is_empty() {
-            return divergence_message(dir, "", "");
-        }
-        let upstream = format!("origin/{branch}");
+        let upstream = match upstream_ref(dir) {
+            Ok(upstream) => upstream,
+            Err(_) => return format!("{dir}: git pull refused: {error}"),
+        };
         let range = format!("HEAD...{upstream}");
         let counts = run_git(dir, &["rev-list", "--left-right", "--count", range.as_str()])
             .unwrap_or_default();
-        divergence_message(dir, &upstream, counts.trim())
+        match classify(counts.trim()) {
+            Ok(RemoteState::Current) => {
+                format!("{dir}: git pull refused by {upstream}: {error}")
+            }
+            Ok(RemoteState::Behind) => behind_message(dir, &upstream, counts.trim()),
+            Ok(RemoteState::Diverged) => divergence_message(dir, &upstream, counts.trim()),
+            Err(_) => format!("{dir}: git pull refused by {upstream}: {error}"),
+        }
     } else {
         format!("{dir}: {error}")
     }
 }
 
+fn behind_message(dir: &str, upstream: &str, counts: &str) -> String {
+    format!(
+        "{dir}: the local branch is behind {upstream} (ahead/behind {counts}); pull it, then reopen"
+    )
+}
+
 fn divergence_message(dir: &str, upstream: &str, counts: &str) -> String {
     format!(
-        "{dir}: the local branch has diverged from {} (ahead/behind {}); merge it or push it, then reopen",
-        if upstream.is_empty() { "its upstream" } else { upstream },
-        if counts.is_empty() { "unknown" } else { counts }
+        "{dir}: the local branch has diverged from {upstream} (ahead/behind {counts}); merge it or push it, then reopen"
     )
 }
 
@@ -122,9 +141,9 @@ fn classify(output: &str) -> Result<RemoteState, String> {
 fn save_sync_state(dir: &str) -> Result<bool, String> {
     run_git(dir, &["rev-parse", "--is-inside-work-tree"])
         .map_err(|_| "the flake directory is not a git repository".to_string())?;
-    let branch = current_branch(dir)?;
-    let upstream = format!("origin/{branch}");
-    run_git(dir, &["fetch", "origin", branch.as_str()])?;
+    current_branch(dir)?;
+    let upstream = upstream_ref(dir)?;
+    run_git(dir, &["fetch"])?;
     let range = format!("HEAD...{upstream}");
     let counts = run_git(dir, &["rev-list", "--left-right", "--count", range.as_str()])?;
     match classify(&counts)? {
@@ -161,10 +180,10 @@ pub(super) fn start_save_sync(app: &Rc<App>, tx: &Tx) {
 /// Stage every change in the flake directory, commit it, and push the
 /// checked-out branch to its same-named origin branch.
 fn git_commit_and_push(dir: &str, message: &str) -> Result<String, String> {
-    let branch = current_branch(dir)?;
+    current_branch(dir)?;
     run_git(dir, &["add", "./*"])?;
     run_git(dir, &["commit", "-m", message])?;
-    run_git(dir, &["push", "origin", branch.as_str()])?;
+    run_git(dir, &["push"])?;
     Ok(message.to_string())
 }
 
@@ -235,6 +254,7 @@ pub(super) fn commit_message_dialog(app: &Rc<App>, tx: &Tx) {
     dialog.add_button("Cancel", gtk::ResponseType::Cancel);
     let commit = dialog.add_button("Commit & push", gtk::ResponseType::Accept);
     commit.add_css_class("suggested-action");
+    dialog.set_default_response(gtk::ResponseType::Accept);
 
     let entry = gtk::Entry::new();
     entry.set_placeholder_text(Some("Commit message"));
@@ -258,9 +278,16 @@ pub(super) fn commit_message_dialog(app: &Rc<App>, tx: &Tx) {
     {
         let app = app.clone();
         let tx = tx.clone();
+        let dialog_entry = entry.clone();
         dialog.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
-                let message = entry.text().to_string();
+                let message = dialog_entry.text().to_string();
+                if message.trim().is_empty() {
+                    app.status.set_text("Commit message cannot be empty");
+                    dialog_entry.grab_focus();
+                    dialog_entry.select_region(0, -1);
+                    return;
+                }
                 let dir = app.base.borrow().clone();
                 app.status.set_text("Git: committing and pushing...");
                 spawn(&tx, move |tx| {
@@ -271,6 +298,8 @@ pub(super) fn commit_message_dialog(app: &Rc<App>, tx: &Tx) {
             dialog.close();
         });
     }
+    entry.grab_focus();
+    entry.select_region(0, -1);
     dialog.present();
 }
 
@@ -295,46 +324,51 @@ mod tests {
     }
 
     #[test]
-    fn pull_uses_the_checked_out_branch() {
-        assert_eq!(
-            pull_args("main", false),
-            vec!["pull", "--no-edit", "origin", "main"]
-        );
-        assert_eq!(
-            pull_args("main", true),
-            vec!["pull", "--no-edit", "--ff-only", "origin", "main"]
-        );
+    fn pull_uses_the_configured_upstream() {
+        assert_eq!(pull_args(false), vec!["pull", "--no-edit"]);
+        assert_eq!(pull_args(true), vec!["pull", "--no-edit", "--ff-only"]);
     }
 
     #[test]
     fn pull_is_non_interactive() {
-        let sync = git_command("/tmp", &pull_args("main", false));
+        let sync = git_command("/tmp", &pull_args(false));
         assert_eq!(
             sync.get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec!["pull", "--no-edit", "origin", "main"]
+            vec!["pull", "--no-edit"]
         );
         assert_eq!(env_value(&sync, "GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
         assert_eq!(env_value(&sync, "GIT_EDITOR").as_deref(), Some("true"));
 
-        let open = git_command("/tmp", &pull_args("main", true));
+        let open = git_command("/tmp", &pull_args(true));
         assert_eq!(
             open.get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec!["pull", "--no-edit", "--ff-only", "origin", "main"]
+            vec!["pull", "--no-edit", "--ff-only"]
         );
         assert_eq!(env_value(&open, "GIT_EDITOR").as_deref(), Some("true"));
     }
 
     #[test]
-    fn fast_forward_refusal_reads_as_divergence() {
-        let message = divergence_message("/repo", "origin/main", "0\t2");
-        assert!(message.contains("/repo"));
-        assert!(message.contains("origin/main"));
-        assert!(message.contains("0\t2"));
-        assert!(message.contains("diverged"));
+    fn fast_forward_refusal_names_the_real_state() {
+        let behind = behind_message("/repo", "origin/main", "0\t2");
+        assert!(behind.contains("/repo"));
+        assert!(behind.contains("origin/main"));
+        assert!(behind.contains("0\t2"));
+        assert!(behind.contains("behind"));
+        assert!(!behind.contains("diverged"));
+
+        let diverged = divergence_message("/repo", "origin/main", "1\t2");
+        assert!(diverged.contains("1\t2"));
+        assert!(diverged.contains("diverged"));
+
+        assert_eq!(
+            classify("0\t0").unwrap(),
+            RemoteState::Current,
+            "a zero ahead/behind count is not a divergence"
+        );
         assert_eq!(
             fast_forward_error("/repo", "git pull: no such remote".to_string()),
             "/repo: git pull: no such remote"
