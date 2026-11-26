@@ -142,15 +142,19 @@ fn table_grid_aligns_columns_and_reindexes_on_remove() {
         .unwrap();
     assert_eq!(added_value.text(), "");
 
-    grid_child(&grid, 0, 3)
+    let added_key = grid_child(&grid, 0, 3)
         .unwrap()
-        .downcast::<gtk::Entry>()
-        .unwrap()
-        .set_text("smoke");
+        .downcast::<gtk::Label>()
+        .unwrap();
+    assert_eq!(
+        added_key.text().as_str(),
+        "row",
+        "a locked key gets a generated name"
+    );
     added.set_active(true);
     let on = editor.to_nix();
     assert!(
-        on.contains("smoke = { enable = true; value = \"\"; };"),
+        on.contains("row = { enable = true; value = \"\"; };"),
         "{on}"
     );
     assert!(!on.contains("enable = \"true\""), "{on}");
@@ -171,7 +175,7 @@ fn table_grid_aligns_columns_and_reindexes_on_remove() {
     let after = editor.to_nix();
     assert!(!after.contains("a = {"), "{after}");
     assert!(
-        after.contains("b = {") && after.contains("smoke = {"),
+        after.contains("b = {") && after.contains("row = {"),
         "{after}"
     );
 
