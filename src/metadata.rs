@@ -273,21 +273,39 @@ pub struct WallpaperSet {
     pub presets: Vec<WallpaperPreset>,
     #[serde(default)]
     pub user: Vec<WallpaperPreset>,
+    /// A non-fatal problem with the generated set, for example a failed
+    /// `nix-store --realise`. The empty string means no warning.
+    #[serde(default)]
+    pub warning: String,
 }
 
 /// Ensure the generated wallpaper directory exists in the store. A failure is
-/// non-fatal: the picker falls back to image placeholders.
-fn realize_wallpapers(out_path: &str, drv_path: &str) {
+/// returned so the picker can report that the previews are not built.
+fn realize_wallpapers(out_path: &str, drv_path: &str) -> Option<String> {
     if out_path.is_empty() || std::path::Path::new(out_path).exists() {
-        return;
+        return None;
     }
     if drv_path.is_empty() {
-        return;
+        return None;
     }
-    let _ = Command::new("nix-store")
+    match Command::new("nix-store")
         .arg("--realise")
         .arg(drv_path)
-        .output();
+        .output()
+    {
+        Ok(output) if output.status.success() => None,
+        Ok(output) => {
+            let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            Some(if detail.is_empty() {
+                "the generated wallpaper set could not be built".to_string()
+            } else {
+                format!("the generated wallpaper set could not be built: {detail}")
+            })
+        }
+        Err(error) => Some(format!(
+            "the generated wallpaper set could not be built: {error}"
+        )),
+    }
 }
 
 /// The generated wallpaper set for a target, or the raw presets declared by
@@ -312,8 +330,32 @@ pub fn wallpaper_set(
     )?;
     let payload: WallpaperSet =
         serde_json::from_str(&json).map_err(|e| format!("cannot parse nix output: {e}"))?;
-    realize_wallpapers(&payload.store_path, &payload.drv_path);
-    Ok(payload)
+    let warning = realize_wallpapers(&payload.store_path, &payload.drv_path);
+    Ok(WallpaperSet {
+        warning: warning.unwrap_or_default(),
+        ..payload
+    })
+}
+
+#[cfg(test)]
+mod wallpaper_tests {
+    use super::*;
+
+    #[test]
+    fn realize_skips_when_there_is_nothing_to_build() {
+        assert_eq!(realize_wallpapers("", ""), None);
+        assert_eq!(realize_wallpapers("/tmp", ""), None);
+        assert_eq!(realize_wallpapers("/nix/store/does-not-exist", ""), None);
+    }
+
+    #[test]
+    fn a_wallpaper_set_parses_without_the_warning_field() {
+        let set: WallpaperSet = serde_json::from_str(
+            r#"{"directory":"","selected":"","default":"","storePath":"","drvPath":"","presets":[],"user":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(set.warning, "");
+    }
 }
 
 #[derive(Debug, Deserialize)]

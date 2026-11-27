@@ -182,6 +182,10 @@ pub enum Editor {
         toggle: gtk::Switch,
         keys_present: Rc<Cell<Option<bool>>>,
     },
+    SysmonConfig {
+        ui: Rc<super::sysmon::SysmonUi>,
+        original: String,
+    },
     Raw {
         view: gtk::TextView,
         root: gtk::ScrolledWindow,
@@ -226,6 +230,7 @@ impl Editor {
             Editor::Docker { root, .. } => root.clone().upcast(),
             Editor::Mounts { root, .. } => root.clone().upcast(),
             Editor::SecureBoot { root, .. } => root.clone().upcast(),
+            Editor::SysmonConfig { ui, .. } => ui.root(),
             Editor::Raw { root, .. } => root.clone().upcast(),
         }
     }
@@ -346,6 +351,7 @@ impl Editor {
             Editor::SecureBoot { toggle, .. } => {
                 if toggle.is_active() { "true" } else { "false" }.to_string()
             }
+            Editor::SysmonConfig { ui, .. } => ui.to_nix(),
             Editor::Raw { view, .. } => {
                 let buffer = view.buffer();
                 buffer
@@ -460,6 +466,7 @@ impl Editor {
             } => docker_unchanged(rows, *orig_count),
             Editor::Mounts { rows, orig, .. } => mounts_unchanged(rows, orig),
             Editor::SecureBoot { toggle, .. } => toggle.is_active() == truthy(original),
+            Editor::SysmonConfig { ui, original, .. } => ui.unchanged(original),
             Editor::Grid { state, .. } => {
                 grid_unchanged(state)
                     && state.tiles.borrow().iter().all(|tile| {
@@ -694,6 +701,7 @@ impl Editor {
                 let update = update.clone();
                 toggle.connect_active_notify(move |_| update());
             }
+            Editor::SysmonConfig { ui, .. } => ui.set_on_change(update.clone()),
             Editor::Grid { state, .. } => {
                 *state.on_change.borrow_mut() = Some(update.clone());
                 for (_, editor) in &state.extras {

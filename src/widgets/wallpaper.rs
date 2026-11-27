@@ -107,6 +107,7 @@ struct WallpaperView {
     module_dir: PathBuf,
     dir: PathBuf,
     remove: gtk::Button,
+    status: gtk::Label,
     on_change: ChangeHook,
     actions: WallpaperActions,
     nullable: bool,

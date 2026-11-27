@@ -189,6 +189,7 @@ fn eval_expr(expr: &Expr) -> Option<Lit> {
 fn string_value(s: &rnix::ast::Str) -> Option<String> {
     match s.normalized_parts().as_slice() {
         [InterpolPart::Literal(text)] => Some(text.clone()),
+        [] => Some(String::new()),
         _ => None,
     }
 }
@@ -716,6 +717,24 @@ mod tests {
         assert_eq!(
             placeholders.string("name.default").as_deref(),
             Some("example")
+        );
+    }
+
+    #[test]
+    fn choices_keep_an_empty_first_item() {
+        let directives = Directives::parse(
+            "widget = \"dropdown\"; choices = [ \"\" \"primary\" \"secondary\" \"tertiary\" ];",
+        )
+        .unwrap();
+        let spec = OptionSpec::from_directives(&directives);
+        assert_eq!(
+            spec.choices,
+            Some(vec![
+                "".into(),
+                "primary".into(),
+                "secondary".into(),
+                "tertiary".into()
+            ])
         );
     }
 

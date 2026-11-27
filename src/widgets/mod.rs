@@ -41,6 +41,7 @@ mod secureboot_wizard;
 pub mod style_catalog;
 mod style_choice;
 mod submodule;
+mod sysmon;
 mod table;
 mod theme;
 mod theme_catalog;

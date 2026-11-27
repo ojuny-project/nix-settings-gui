@@ -137,6 +137,61 @@ pub(crate) fn card_defaults(surface: GridSurface, id: &str) -> Vec<(&'static str
     }
 }
 
+/// Catalog choices for a card field that the DMS stores without an annotated
+/// option. The tone token list is shared by every dashboard and weather tone
+/// field, including fields whose annotation was dropped by an earlier save.
+pub(crate) fn field_choices(name: &str) -> Option<Vec<String>> {
+    (name == "tone").then(|| {
+        ["", "primary", "secondary", "tertiary"]
+            .map(str::to_string)
+            .to_vec()
+    })
+}
+
+pub(crate) const SYSMON_DEVICE_TYPES: &[&str] = &["cpu", "memory", "disk", "net", "gpu"];
+pub(crate) const SYSMON_LAYOUTS: &[&str] = &["tiles", "list", "bars", "graphs"];
+pub(crate) const SYSMON_BAR_STYLES: &[&str] = &["brackets", "tiles"];
+pub(crate) const SYSMON_LIST_STYLES: &[&str] = &["rows", "tiles"];
+pub(crate) const SYSMON_ORIENTATIONS: &[&str] = &["auto", "horizontal", "vertical"];
+
+pub(crate) fn sysmon_vals(device_type: &str) -> &'static [&'static str] {
+    match device_type {
+        "cpu" => &["usage", "temp", "clock"],
+        "memory" => &["used", "swap"],
+        "gpu" => &["usage", "temp", "vram", "power"],
+        "disk" => &["space", "read", "write"],
+        "net" => &["down", "up"],
+        _ => &[],
+    }
+}
+
+/// Split a metric device id into its type and optional suffix, mirroring the
+/// pinned DMS `SysmonCatalog.typeOf`.
+pub(crate) fn sysmon_device_type(device: &str) -> Option<(&str, Option<&str>)> {
+    let (device_type, suffix) = match device.split_once(':') {
+        Some((device_type, suffix)) => (device_type, Some(suffix)),
+        None => (device, None),
+    };
+    if !SYSMON_DEVICE_TYPES.contains(&device_type) {
+        return None;
+    }
+    match (device_type, suffix) {
+        ("cpu" | "memory", Some(_)) => None,
+        ("gpu", None) => None,
+        (_, Some(suffix)) => {
+            let valid = !suffix.is_empty()
+                && suffix.chars().count() <= 128
+                && !suffix.chars().any(char::is_control);
+            valid.then_some((device_type, Some(suffix)))
+        }
+        (_, None) => Some((device_type, None)),
+    }
+}
+
+pub(crate) fn sysmon_device_is_valid(device: &str) -> bool {
+    sysmon_device_type(device).is_some()
+}
+
 /// Symbolic icon used by the editor when it cannot render the real widget.
 pub(crate) fn widget_icon(id: &str) -> &'static str {
     match id {
@@ -268,5 +323,33 @@ mod tests {
         assert_eq!(card_size(GridSurface::ControlCenter, "settings").w, 1);
         assert_eq!(card_size(GridSurface::ControlCenter, "settings").h, 1);
         assert_eq!(card_size(GridSurface::ControlCenter, "user").w, 5);
+    }
+
+    #[test]
+    fn tone_fields_always_offer_the_four_tone_tokens() {
+        assert_eq!(
+            field_choices("tone"),
+            Some(vec![
+                "".to_string(),
+                "primary".to_string(),
+                "secondary".to_string(),
+                "tertiary".to_string()
+            ])
+        );
+        assert_eq!(field_choices("graphics"), None);
+    }
+
+    #[test]
+    fn sysmon_vals_match_dms() {
+        assert_eq!(sysmon_vals("cpu"), ["usage", "temp", "clock"]);
+        assert_eq!(sysmon_vals("memory"), ["used", "swap"]);
+        assert_eq!(sysmon_vals("gpu"), ["usage", "temp", "vram", "power"]);
+        assert_eq!(sysmon_vals("disk"), ["space", "read", "write"]);
+        assert_eq!(sysmon_vals("net"), ["down", "up"]);
+        assert!(!sysmon_device_is_valid("cpu:0"));
+        assert!(!sysmon_device_is_valid("gpu"));
+        assert!(sysmon_device_is_valid("gpu:0000:01:00.0"));
+        assert!(sysmon_device_is_valid("disk:nvme0n1"));
+        assert!(sysmon_device_is_valid("net"));
     }
 }

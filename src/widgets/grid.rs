@@ -12,6 +12,8 @@ use super::grid_layout::{
 };
 use super::names::{field_caption, field_help, widget_display_name};
 use super::nix::attr_key;
+#[cfg(feature = "ojuny-widgets")]
+use super::sysmon::build_sysmon_config;
 use super::submodule::{build_bespoke_child, build_child_row, scan_direct_children};
 use crate::model::Record;
 use crate::scan;
@@ -758,6 +760,27 @@ fn dashboard_option_fields(id: &str, existing: &[GridField], ctx: &BuildContext)
     fields
 }
 
+fn apply_catalog_choices(record: &mut Record) {
+    #[cfg(feature = "ojuny-widgets")]
+    {
+        let name = record
+            .segments
+            .last()
+            .map(String::as_str)
+            .unwrap_or_default();
+        if record.spec.widget.is_none() {
+            if let Some(choices) = super::dms_catalog::field_choices(name) {
+                record.spec.widget = Some(crate::dsl::WidgetKind::Dropdown);
+                record.spec.choices = Some(choices);
+            }
+        }
+    }
+    #[cfg(not(feature = "ojuny-widgets"))]
+    {
+        let _ = record;
+    }
+}
+
 pub(crate) fn make_grid_tile(
     id: &str,
     value_text: &str,
@@ -777,7 +800,15 @@ pub(crate) fn make_grid_tile(
         && id == "edit";
     let mut fields: Vec<GridField> = Vec::new();
     let mut present = Vec::new();
-    for child in scan::scan_value(value_text) {
+    let direct_sysmon = cfg!(feature = "ojuny-widgets")
+        && profile.surface == GridSurface::Dashboard
+        && id == "sysmon";
+    let children = if direct_sysmon {
+        scan::scan_value_direct(value_text)
+    } else {
+        scan::scan_value(value_text)
+    };
+    for mut child in children {
         let name = child.segments.last().cloned().unwrap_or_default();
         let text = child.value.trim().to_string();
         match name.as_str() {
@@ -791,8 +822,13 @@ pub(crate) fn make_grid_tile(
                 if cfg!(feature = "ojuny-widgets") => {}
             "tiles" if cfg!(feature = "ojuny-widgets") && id == QUICK_TILES_ID => {}
             _ => {
-                present.push(name);
-                let editor = build_bespoke_child(&child, ctx);
+                present.push(name.clone());
+                apply_catalog_choices(&mut child);
+                let editor = if direct_sysmon && name == "config" {
+                    build_sysmon_config(&child)
+                } else {
+                    build_bespoke_child(&child, ctx)
+                };
                 fields.push(GridField {
                     orig_value: child.value.clone(),
                     record: child,
@@ -805,11 +841,12 @@ pub(crate) fn make_grid_tile(
         if present.iter().any(|field| field.eq_ignore_ascii_case(name)) {
             continue;
         }
-        let record = Record {
+        let mut record = Record {
             segments: vec![name.to_string()],
             value: literal.to_string(),
             ..Record::default()
         };
+        apply_catalog_choices(&mut record);
         let editor = build_bespoke_child(&record, ctx);
         fields.push(GridField {
             record,
