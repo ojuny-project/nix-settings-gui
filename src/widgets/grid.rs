@@ -670,7 +670,7 @@ fn build_grid_popout(fields: &[GridField]) -> gtk::Popover {
     let popover = gtk::Popover::new();
     popover.set_position(gtk::PositionType::Right);
     let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    content.set_size_request(1, -1);
+    content.set_size_request(360, -1);
     content.set_margin_top(12);
     content.set_margin_bottom(12);
     content.set_margin_start(12);
@@ -695,6 +695,8 @@ fn build_grid_popout(fields: &[GridField]) -> gtk::Popover {
     let scroll = gtk::ScrolledWindow::builder()
         .min_content_height(120)
         .max_content_height(420)
+        .propagate_natural_height(true)
+        .propagate_natural_width(true)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .child(&content)
         .build();

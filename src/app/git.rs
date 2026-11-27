@@ -67,7 +67,42 @@ pub(super) fn start_git_sync(app: &Rc<App>, tx: &Tx) {
 /// Pull the flake directory without merging. Used by the automatic sync on
 /// open, where a failed pull is reported and the scan continues.
 pub(super) fn pull(dir: &str) -> Result<(), String> {
-    pull_branch(dir, true).map_err(|error| fast_forward_error(dir, error))
+    let _ = run_git(dir, &["fetch"]);
+    pull_branch(dir, true).map_err(|error| pull_error(dir, error))
+}
+
+fn pull_error(dir: &str, error: String) -> String {
+    if error.contains("Your local changes") || error.contains("would be overwritten") {
+        let upstream = upstream_ref(dir).unwrap_or_else(|_| "the upstream".to_string());
+        let counts = ahead_behind(dir, &upstream).unwrap_or_default();
+        return format!(
+            "{dir}: local changes block the pull of {upstream} (ahead/behind {}); commit or stash these files, then reopen: {}",
+            counts.trim(),
+            blocking_paths(dir)
+        );
+    }
+    fast_forward_error(dir, error)
+}
+
+fn ahead_behind(dir: &str, upstream: &str) -> Result<String, String> {
+    let range = format!("HEAD...{upstream}");
+    run_git(
+        dir,
+        &["rev-list", "--left-right", "--count", range.as_str()],
+    )
+}
+
+fn blocking_paths(dir: &str) -> String {
+    let paths = run_git(dir, &["diff", "--name-only"]).unwrap_or_default();
+    let listed: Vec<&str> = paths
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    if listed.is_empty() {
+        "unknown".to_string()
+    } else {
+        listed.join(", ")
+    }
 }
 
 /// A fast-forward refusal is a divergence the user must resolve. Report the
@@ -79,12 +114,7 @@ fn fast_forward_error(dir: &str, error: String) -> String {
             Ok(upstream) => upstream,
             Err(_) => return format!("{dir}: git pull refused: {error}"),
         };
-        let range = format!("HEAD...{upstream}");
-        let counts = run_git(
-            dir,
-            &["rev-list", "--left-right", "--count", range.as_str()],
-        )
-        .unwrap_or_default();
+        let counts = ahead_behind(dir, &upstream).unwrap_or_default();
         match classify(counts.trim()) {
             Ok(RemoteState::Current) => {
                 format!("{dir}: git pull refused by {upstream}: {error}")
