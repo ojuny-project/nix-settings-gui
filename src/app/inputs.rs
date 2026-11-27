@@ -280,6 +280,14 @@ fn update_all_inputs(app: &Rc<App>, names: &[String]) {
     });
 }
 
+/// Clamp a saved scroll value once the new adjustment has an upper bound. A
+/// rebuilt page has `upper == page_size == 0` until GTK allocates it, and a
+/// plain `set_value` at that point is clamped back to the top.
+fn restored_value(target: f64, upper: f64, page: f64, lower: f64) -> f64 {
+    let maximum = (upper - page).max(lower);
+    target.clamp(lower, maximum)
+}
+
 pub(super) fn refresh(app: &Rc<App>) {
     let scroll_position = app
         .inputs_page
@@ -442,8 +450,28 @@ pub(super) fn refresh(app: &Rc<App>) {
     let window = scrolled(content);
     app.inputs_page.append(&window);
     if scroll_position > 0.0 {
-        glib::timeout_add_local_once(Duration::from_millis(0), move || {
-            window.vadjustment().set_value(scroll_position);
+        let adjustment = window.vadjustment();
+        let handler: Rc<Cell<Option<glib::SignalHandlerId>>> = Rc::new(Cell::new(None));
+        let handler_for_signal = handler.clone();
+        let id = adjustment.connect_notify_local(Some("upper"), move |adjustment, _| {
+            let upper = adjustment.upper();
+            let page = adjustment.page_size();
+            if upper - page < scroll_position {
+                return;
+            }
+            adjustment.set_value(restored_value(
+                scroll_position,
+                upper,
+                page,
+                adjustment.lower(),
+            ));
+            if let Some(id) = handler_for_signal.take() {
+                adjustment.disconnect(id);
+            }
+        });
+        handler.set(Some(id));
+        glib::idle_add_local_once(move || {
+            adjustment.notify("upper");
         });
     }
 }
@@ -941,4 +969,21 @@ fn confirm_delete(app: &Rc<App>, name: &str) {
         dialog.close();
     });
     dialog.present();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::restored_value;
+
+    #[test]
+    fn scroll_restore_waits_for_an_upper_bound() {
+        assert_eq!(restored_value(120.0, 0.0, 0.0, 0.0), 0.0);
+        assert_eq!(restored_value(120.0, 500.0, 100.0, 0.0), 120.0);
+    }
+
+    #[test]
+    fn scroll_restore_is_clamped_to_the_new_range() {
+        assert_eq!(restored_value(900.0, 500.0, 100.0, 0.0), 400.0);
+        assert_eq!(restored_value(20.0, 500.0, 100.0, 40.0), 40.0);
+    }
 }

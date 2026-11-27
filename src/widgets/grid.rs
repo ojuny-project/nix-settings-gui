@@ -12,9 +12,9 @@ use super::grid_layout::{
 };
 use super::names::{field_caption, field_help, widget_display_name};
 use super::nix::attr_key;
+use super::submodule::{build_bespoke_child, build_child_row, scan_direct_children};
 #[cfg(feature = "ojuny-widgets")]
 use super::sysmon::build_sysmon_config;
-use super::submodule::{build_bespoke_child, build_child_row, scan_direct_children};
 use crate::model::Record;
 use crate::scan;
 use crate::value;
@@ -781,6 +781,20 @@ fn apply_catalog_choices(record: &mut Record) {
     }
 }
 
+fn grid_child_editor(
+    direct_sysmon: bool,
+    child: &Record,
+    name: &str,
+    ctx: &BuildContext,
+) -> Editor {
+    #[cfg(feature = "ojuny-widgets")]
+    if direct_sysmon && name == "config" {
+        return build_sysmon_config(child);
+    }
+    let _ = (direct_sysmon, name);
+    build_bespoke_child(child, ctx)
+}
+
 pub(crate) fn make_grid_tile(
     id: &str,
     value_text: &str,
@@ -824,11 +838,7 @@ pub(crate) fn make_grid_tile(
             _ => {
                 present.push(name.clone());
                 apply_catalog_choices(&mut child);
-                let editor = if direct_sysmon && name == "config" {
-                    build_sysmon_config(&child)
-                } else {
-                    build_bespoke_child(&child, ctx)
-                };
+                let editor = grid_child_editor(direct_sysmon, &child, &name, ctx);
                 fields.push(GridField {
                     orig_value: child.value.clone(),
                     record: child,
@@ -1613,6 +1623,100 @@ mod tests {
                 context.iteration(false);
             }
         }
+    }
+
+    #[cfg(feature = "ojuny-widgets")]
+    #[test]
+    #[ignore = "needs a display; run with `cargo test -- --ignored`"]
+    fn sysmon_card_builds_a_group_editor_and_writes_nested_config() {
+        if gtk::init().is_err() {
+            eprintln!("skipping sysmon grid runtime check: no display");
+            return;
+        }
+        let record = Record {
+            segments: vec!["dashCards".into()],
+            value: "{ sysmon = { _order = 60; col = 3; row = 1; w = 3; h = 3; config = { metrics = [ { device = \"cpu\"; graph = true; on = true; vals = [ \"usage\" \"temp\" ]; } ]; layout = \"bars\"; showHeader = false; barOrientation = \"horizontal\"; barNames = true; barStyle = \"tiles\"; }; }; }".into(),
+            ..Record::default()
+        };
+        let editor = build_grid_configuration(&record, &BuildContext::default());
+        let Editor::Grid { state, .. } = editor else {
+            panic!("grid control expected");
+        };
+        {
+            let tiles = state.tiles.borrow();
+            assert_eq!(tiles.len(), 1);
+            assert_eq!(tiles[0].id, "sysmon");
+            assert_eq!(tiles[0].fields.len(), 1);
+            assert_eq!(tiles[0].fields[0].record.segments, vec!["config"]);
+            assert!(matches!(
+                tiles[0].fields[0].editor,
+                Editor::SysmonConfig { .. }
+            ));
+        }
+        let nix = grid_nix(&state);
+        assert!(nix.contains("config = { metrics = ["));
+        assert!(nix.contains("barStyle = \"tiles\";"));
+        assert!(rnix::Root::parse(&nix).errors().is_empty());
+    }
+
+    #[cfg(feature = "ojuny-widgets")]
+    #[test]
+    #[ignore = "needs a display; run with `cargo test -- --ignored`"]
+    fn tone_cards_and_weather_widgets_get_the_four_tone_choices() {
+        if gtk::init().is_err() {
+            eprintln!("skipping tone runtime check: no display");
+            return;
+        }
+        let dashboard = Record {
+            segments: vec!["dashCards".into()],
+            value: "{ clock = { _order = 10; col = 2; row = 0; w = 1; h = 1; }; }".into(),
+            ..Record::default()
+        };
+        let editor = build_grid_configuration(&dashboard, &BuildContext::default());
+        let Editor::Grid { state, .. } = editor else {
+            panic!("grid control expected");
+        };
+        let tone_choices = {
+            let tiles = state.tiles.borrow();
+            let field = tiles[0]
+                .fields
+                .iter()
+                .find(|field| field.record.segments.last().map(String::as_str) == Some("tone"))
+                .expect("clock tone field");
+            let Editor::Dropdown { choices, .. } = &field.editor else {
+                panic!("tone dropdown expected");
+            };
+            choices.clone()
+        };
+        assert_eq!(
+            tone_choices,
+            vec![
+                "\"\"".to_string(),
+                "\"primary\"".to_string(),
+                "\"secondary\"".to_string(),
+                "\"tertiary\"".to_string()
+            ]
+        );
+
+        let weather = Record {
+            segments: vec!["dashOptions".into(), "weather".into(), "widgets".into()],
+            value: "{ humidity = { _order = 10; col = 2; row = 4; w = 1; h = 2; graphics = true; tone = \"\"; }; }".into(),
+            ..Record::default()
+        };
+        let editor = build_grid_configuration(&weather, &BuildContext::default());
+        let Editor::Grid { state, .. } = editor else {
+            panic!("grid control expected");
+        };
+        let tiles = state.tiles.borrow();
+        let field = tiles[0]
+            .fields
+            .iter()
+            .find(|field| field.record.segments.last().map(String::as_str) == Some("tone"))
+            .expect("humidity tone field");
+        let Editor::Dropdown { choices, .. } = &field.editor else {
+            panic!("tone dropdown expected");
+        };
+        assert_eq!(choices.len(), 4);
     }
 
     #[test]

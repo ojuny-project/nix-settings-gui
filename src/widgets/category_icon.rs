@@ -2,7 +2,7 @@
 //! own. The catalog maps category keywords to theme icon names; when no rule
 //! matches, the most common page icon in the category is used.
 
-pub(crate) const FALLBACK_CATEGORY_ICON: &str = "preferences-system-symbolic";
+pub(crate) const FALLBACK_CATEGORY_ICON: &str = "emblem-system-symbolic";
 
 struct CategoryIconRule {
     icon: &'static str,
@@ -59,7 +59,7 @@ const CATEGORY_ICON_CATALOG: &[CategoryIconRule] = &[
         keywords: &["security", "secure", "boot"],
     },
     CategoryIconRule {
-        icon: "preferences-system-symbolic",
+        icon: "emblem-system-symbolic",
         keywords: &["system", "core", "general", "settings"],
     },
 ];
@@ -149,7 +149,7 @@ mod tests {
     fn matches_a_catalog_rule_by_keyword() {
         assert_eq!(
             pick_category_icon_name(all, "07-System", &[]).as_deref(),
-            Some("preferences-system-symbolic")
+            Some("emblem-system-symbolic")
         );
         assert_eq!(
             pick_category_icon_name(all, "01-Users", &[]).as_deref(),

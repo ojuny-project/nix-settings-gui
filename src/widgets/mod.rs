@@ -41,6 +41,7 @@ mod secureboot_wizard;
 pub mod style_catalog;
 mod style_choice;
 mod submodule;
+#[cfg(feature = "ojuny-widgets")]
 mod sysmon;
 mod table;
 mod theme;

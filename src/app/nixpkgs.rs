@@ -473,6 +473,93 @@ impl SuggestField {
     }
 }
 
+#[derive(Clone)]
+struct CommitPicker {
+    entry: gtk::Entry,
+    list: gtk::ListBox,
+    menu: gtk::MenuButton,
+    button: gtk::Button,
+}
+
+impl CommitPicker {
+    fn new(value: &str, placeholder: &str, scan_label: &str) -> Self {
+        let entry = gtk::Entry::new();
+        entry.set_text(value);
+        entry.set_hexpand(true);
+        entry.set_placeholder_text(Some(placeholder));
+        let list = gtk::ListBox::new();
+        list.set_selection_mode(gtk::SelectionMode::None);
+        let scrolled = gtk::ScrolledWindow::builder()
+            .child(&list)
+            .min_content_height(120)
+            .max_content_height(320)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .build();
+        let popover = gtk::Popover::builder().child(&scrolled).build();
+        let menu = gtk::MenuButton::builder()
+            .icon_name("go-down-symbolic")
+            .tooltip_text("Choose a scanned commit")
+            .popover(&popover)
+            .build();
+        menu.add_css_class("flat");
+        let button = gtk::Button::with_label(scan_label);
+        button.set_valign(gtk::Align::Center);
+        let picker = Self {
+            entry,
+            list,
+            menu,
+            button,
+        };
+        {
+            let entry = picker.entry.clone();
+            let popover = picker.menu.popover();
+            picker.list.connect_row_activated(move |_, row| {
+                let value = row.widget_name().to_string();
+                if !value.is_empty() {
+                    entry.set_text(&value);
+                }
+                if let Some(popover) = &popover {
+                    popover.popdown();
+                }
+            });
+        }
+        picker
+    }
+
+    fn value(&self) -> String {
+        self.entry.text().to_string()
+    }
+
+    fn fill(&self, values: &[String]) {
+        while let Some(child) = self.list.first_child() {
+            self.list.remove(&child);
+        }
+        for value in values {
+            let row = gtk::ListBoxRow::new();
+            row.set_widget_name(value);
+            let label = gtk::Label::builder()
+                .xalign(0.0)
+                .label(value)
+                .css_classes(["monospace"])
+                .build();
+            row.set_child(Some(&label));
+            self.list.append(&row);
+        }
+        if self.entry.text().trim().is_empty() {
+            if let Some(first) = values.first() {
+                self.entry.set_text(first);
+            }
+        }
+        self.entry.grab_focus();
+    }
+
+    fn append_to(&self, container: &gtk::Box) {
+        container.append(&self.entry);
+        container.append(&self.menu);
+        container.append(&self.button);
+    }
+}
+
 struct FormGrid<'a> {
     grid: &'a gtk::Grid,
     row: i32,
@@ -491,6 +578,12 @@ impl<'a> FormGrid<'a> {
     }
 
     fn field(&mut self, label: &str, field: &SuggestField) {
+        let container = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        field.append_to(&container);
+        self.add(label, &container);
+    }
+
+    fn picker(&mut self, label: &str, field: &CommitPicker) {
         let container = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         field.append_to(&container);
         self.add(label, &container);
@@ -552,6 +645,22 @@ fn bind_entry(
     let update = update.clone();
     entry.connect_changed(move |entry| {
         setter(&mut state.borrow_mut(), entry.text().to_string());
+        update();
+    });
+}
+
+fn bind_picker(
+    picker: &CommitPicker,
+    state: &Rc<RefCell<FormState>>,
+    update: &Rc<dyn Fn()>,
+    setter: TextSetter,
+) {
+    let state = state.clone();
+    let update = update.clone();
+    let picker = picker.clone();
+    let entry = picker.entry.clone();
+    entry.connect_changed(move |_| {
+        setter(&mut state.borrow_mut(), picker.value());
         update();
     });
 }
@@ -709,15 +818,15 @@ fn build_form(
                 },
             );
 
-            let commit = SuggestField::new(
+            let commit = CommitPicker::new(
                 &state.borrow().channel_rev,
-                "Optional commit hash",
+                "Select or enter a commit",
                 "Scan commits",
             );
-            bind_entry(&commit.entry, state, update, |state, value| {
+            bind_picker(&commit, state, update, |state, value| {
                 state.channel_rev = value
             });
-            form.field("Commit (optional)", &commit);
+            form.picker("Commit (optional)", &commit);
             let state_for_scan = state.clone();
             run_scan(
                 &commit.button,
@@ -891,15 +1000,13 @@ fn build_form(
                 },
             );
 
-            let commit = SuggestField::new(
+            let commit = CommitPicker::new(
                 &state.borrow().commit,
-                "Optional commit hash",
+                "Select or enter a commit",
                 "Scan commits",
             );
-            bind_entry(&commit.entry, state, update, |state, value| {
-                state.commit = value
-            });
-            form.field("Commit (optional)", &commit);
+            bind_picker(&commit, state, update, |state, value| state.commit = value);
+            form.picker("Commit (optional)", &commit);
             let state_for_scan = state.clone();
             let kind_for_commits = kind.clone();
             run_scan(
@@ -995,11 +1102,13 @@ fn build_form(
                 },
             );
 
-            let rev_entry = SuggestField::new(&state.borrow().rev, "commit hash", "Scan commits");
-            bind_entry(&rev_entry.entry, state, update, |state, value| {
-                state.rev = value
-            });
-            form.field("Commit (optional)", &rev_entry);
+            let rev_entry = CommitPicker::new(
+                &state.borrow().rev,
+                "Select or enter a commit",
+                "Scan commits",
+            );
+            bind_picker(&rev_entry, state, update, |state, value| state.rev = value);
+            form.picker("Commit (optional)", &rev_entry);
             let state_for_scan = state.clone();
             run_scan(
                 &rev_entry.button,
@@ -1251,4 +1360,25 @@ fn open_dialog(app: &Rc<App>, existing: Option<FlakeInput>) {
     }
 
     dialog.present();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "needs a display; run with `cargo test -- --ignored`"]
+    fn commit_picker_keeps_the_current_value_and_accepts_scanned_commits() {
+        if gtk::init().is_err() {
+            eprintln!("skipping commit picker runtime check: no display");
+            return;
+        }
+        let picker = CommitPicker::new("abc123", "Select or enter a commit", "Scan commits");
+        assert_eq!(picker.value(), "abc123");
+        picker.fill(&["def456".to_string(), "789abc".to_string()]);
+        assert_eq!(picker.value(), "abc123");
+        picker.entry.set_text("");
+        picker.fill(&["def456".to_string()]);
+        assert_eq!(picker.value(), "def456");
+    }
 }

@@ -707,10 +707,10 @@ mod tests {
 
     #[test]
     fn missing_menu_icon_falls_back_to_generic() {
-        let only_fallback = |name: &str| name == "preferences-system-symbolic";
+        let only_fallback = |name: &str| name == "emblem-system-symbolic";
         assert_eq!(
             pick_icon_name(only_fallback, Some("preferences-system-displays-symbolic")).as_deref(),
-            Some("preferences-system-symbolic")
+            Some("emblem-system-symbolic")
         );
         let all_present = |_: &str| true;
         assert_eq!(

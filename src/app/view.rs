@@ -410,7 +410,7 @@ fn category_icon(category: &str, menus: &[MenuModel]) -> Option<String> {
 fn configure_icon() -> Option<String> {
     let display = gtk::gdk::Display::default()?;
     let theme = gtk::IconTheme::for_display(&display);
-    ["preferences-other-symbolic", "preferences-system-symbolic"]
+    ["emblem-system-symbolic", "preferences-other-symbolic"]
         .into_iter()
         .find(|name| theme.has_icon(name))
         .map(str::to_string)

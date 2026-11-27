@@ -127,6 +127,7 @@
             cargoBuildFlags = lib.optionals (!withOjunyWidgets) [ "--no-default-features" ];
 
             TINTED_SCHEMES_DIR = "${tinted-theming}";
+            NSG_SOURCE_REVISION = self.shortRev or self.dirtyShortRev or "unknown";
 
             RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
             inherit nativeBuildInputs buildInputs;
@@ -263,6 +264,7 @@
             ]);
 
           TINTED_SCHEMES_DIR = "${tinted-theming}";
+          NSG_SOURCE_REVISION = self.shortRev or self.dirtyShortRev or "unknown";
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
         };
       }

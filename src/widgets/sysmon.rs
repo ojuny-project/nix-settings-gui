@@ -67,9 +67,7 @@ impl SysmonConfig {
                 }
                 "layout" => config.layout = parse_string_literal(&child.value),
                 "showHeader" => config.show_header = child.value.trim() == "true",
-                "barOrientation" => {
-                    config.bar_orientation = parse_string_literal(&child.value)
-                }
+                "barOrientation" => config.bar_orientation = parse_string_literal(&child.value),
                 "barNames" => config.bar_names = child.value.trim() == "true",
                 "barStyle" => config.bar_style = parse_string_literal(&child.value),
                 _ => config.unknown.push((name, child.value.clone())),
@@ -81,12 +79,12 @@ impl SysmonConfig {
     pub(crate) fn to_nix(&self) -> String {
         let metrics: Vec<String> = self.metrics.iter().map(SysmonMetric::to_nix).collect();
         let mut parts = vec![
-            format!("metrics = [ {} ]", metrics.join(" ")),
-            format!("layout = {}", quote(&self.layout)),
-            format!("showHeader = {}", self.show_header),
-            format!("barOrientation = {}", quote(&self.bar_orientation)),
-            format!("barNames = {}", self.bar_names),
-            format!("barStyle = {}", quote(&self.bar_style)),
+            format!("metrics = [ {} ];", metrics.join(" ")),
+            format!("layout = {};", quote(&self.layout)),
+            format!("showHeader = {};", self.show_header),
+            format!("barOrientation = {};", quote(&self.bar_orientation)),
+            format!("barNames = {};", self.bar_names),
+            format!("barStyle = {};", quote(&self.bar_style)),
         ];
         for (name, value) in &self.unknown {
             parts.push(format!("{} = {};", attr_key(name), value));
@@ -111,10 +109,10 @@ impl SysmonMetric {
             self.vals.iter().map(|val| quote(val)).collect()
         };
         let mut parts = vec![
-            format!("device = {}", quote(&self.device)),
-            format!("graph = {}", self.graph),
-            format!("on = {}", self.on),
-            format!("vals = [ {} ]", vals.join(" ")),
+            format!("device = {};", quote(&self.device)),
+            format!("graph = {};", self.graph),
+            format!("on = {};", self.on),
+            format!("vals = [ {} ];", vals.join(" ")),
         ];
         for (name, value) in &self.unknown {
             parts.push(format!("{} = {};", attr_key(name), value));
@@ -148,9 +146,10 @@ fn parse_metric(text: &str) -> Option<SysmonMetric> {
     if !super::dms_catalog::sysmon_device_is_valid(&device) {
         return None;
     }
+    let vals = normalize_vals(&device, vals);
     Some(SysmonMetric {
         device,
-        vals: normalize_vals(&device, vals),
+        vals,
         graph,
         on,
         unknown,
@@ -183,11 +182,17 @@ fn normalize_vals(device: &str, vals: Vec<String>) -> Vec<String> {
 }
 
 fn device_type(device: &str) -> &str {
-    device.split_once(':').map(|(kind, _)| kind).unwrap_or(device)
+    device
+        .split_once(':')
+        .map(|(kind, _)| kind)
+        .unwrap_or(device)
 }
 
 fn device_suffix(device: &str) -> &str {
-    device.split_once(':').map(|(_, suffix)| suffix).unwrap_or("")
+    device
+        .split_once(':')
+        .map(|(_, suffix)| suffix)
+        .unwrap_or("")
 }
 
 fn device_for(kind: &str, suffix: &str) -> String {
@@ -271,7 +276,7 @@ impl SysmonUi {
         self.root.append(&section);
 
         let layout = enum_dropdown(
-            &["tiles", "list", "bars", "graphs"],
+            super::dms_catalog::SYSMON_LAYOUTS,
             &["Tiles", "List", "Bars", "Graphs"],
             &self.state.borrow().layout,
         );
@@ -280,7 +285,9 @@ impl SysmonUi {
             let ui = self.clone_ref();
             layout.connect_selected_notify(move |combo| {
                 if let Some(value) = combo.selected_item().and_then(|item| {
-                    item.downcast::<gtk::StringObject>().ok().map(|s| s.string().to_string())
+                    item.downcast::<gtk::StringObject>()
+                        .ok()
+                        .map(|s| s.string().to_string())
                 }) {
                     state.borrow_mut().layout = value;
                     ui.fire();
@@ -300,11 +307,10 @@ impl SysmonUi {
                 ui.fire();
             });
         }
-        self.root
-            .append(&form_row("Show header", &show_header));
+        self.root.append(&form_row("Show header", &show_header));
 
         let orientation = enum_dropdown(
-            &["auto", "horizontal", "vertical"],
+            super::dms_catalog::SYSMON_ORIENTATIONS,
             &["Auto", "Horizontal", "Vertical"],
             &self.state.borrow().bar_orientation,
         );
@@ -313,15 +319,16 @@ impl SysmonUi {
             let ui = self.clone_ref();
             orientation.connect_selected_notify(move |combo| {
                 if let Some(value) = combo.selected_item().and_then(|item| {
-                    item.downcast::<gtk::StringObject>().ok().map(|s| s.string().to_string())
+                    item.downcast::<gtk::StringObject>()
+                        .ok()
+                        .map(|s| s.string().to_string())
                 }) {
                     state.borrow_mut().bar_orientation = value;
                     ui.fire();
                 }
             });
         }
-        self.root
-            .append(&form_row("Bar orientation", &orientation));
+        self.root.append(&form_row("Bar orientation", &orientation));
 
         let bar_names = gtk::Switch::new();
         bar_names.set_active(self.state.borrow().bar_names);
@@ -337,7 +344,7 @@ impl SysmonUi {
         self.root.append(&form_row("Bar names", &bar_names));
 
         let bar_style = enum_dropdown(
-            &["brackets", "tiles"],
+            super::dms_catalog::SYSMON_BAR_STYLES,
             &["Brackets", "Tiles"],
             &self.state.borrow().bar_style,
         );
@@ -346,7 +353,9 @@ impl SysmonUi {
             let ui = self.clone_ref();
             bar_style.connect_selected_notify(move |combo| {
                 if let Some(value) = combo.selected_item().and_then(|item| {
-                    item.downcast::<gtk::StringObject>().ok().map(|s| s.string().to_string())
+                    item.downcast::<gtk::StringObject>()
+                        .ok()
+                        .map(|s| s.string().to_string())
                 }) {
                     state.borrow_mut().bar_style = value;
                     ui.fire();
@@ -644,7 +653,10 @@ impl SysmonUi {
 fn strings_dropdown(values: &[String], current: &str) -> gtk::DropDown {
     let refs: Vec<&str> = values.iter().map(String::as_str).collect();
     let combo = gtk::DropDown::from_strings(&refs);
-    let selected = values.iter().position(|value| value == current).unwrap_or(0);
+    let selected = values
+        .iter()
+        .position(|value| value == current)
+        .unwrap_or(0);
     combo.set_selected(selected as u32);
     combo.set_halign(gtk::Align::Start);
     combo

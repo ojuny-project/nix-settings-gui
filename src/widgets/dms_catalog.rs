@@ -151,7 +151,6 @@ pub(crate) fn field_choices(name: &str) -> Option<Vec<String>> {
 pub(crate) const SYSMON_DEVICE_TYPES: &[&str] = &["cpu", "memory", "disk", "net", "gpu"];
 pub(crate) const SYSMON_LAYOUTS: &[&str] = &["tiles", "list", "bars", "graphs"];
 pub(crate) const SYSMON_BAR_STYLES: &[&str] = &["brackets", "tiles"];
-pub(crate) const SYSMON_LIST_STYLES: &[&str] = &["rows", "tiles"];
 pub(crate) const SYSMON_ORIENTATIONS: &[&str] = &["auto", "horizontal", "vertical"];
 
 pub(crate) fn sysmon_vals(device_type: &str) -> &'static [&'static str] {
@@ -219,7 +218,7 @@ pub(crate) fn widget_icon(id: &str) -> &'static str {
         "colorPicker" => "color-select-symbolic",
         "runningApps" => "view-app-grid-symbolic",
         "quickTiles" => "view-grid-symbolic",
-        "systemTray" | "tray" => "preferences-system-symbolic",
+        "systemTray" | "tray" => "emblem-system-symbolic",
         "wellbeing" => "emblem-favorite-symbolic",
         "humidity" => "weather-showers-symbolic",
         "wind" => "weather-windy-symbolic",

@@ -136,7 +136,7 @@ fn build_ui(
     host_combo.set_visible(false);
 
     let advanced_toggle = gtk::ToggleButton::builder()
-        .icon_name("preferences-other-symbolic")
+        .icon_name("emblem-system-symbolic")
         .tooltip_text("Show hidden menus and advanced options")
         .build();
     let sidebar_toggle = gtk::ToggleButton::builder()

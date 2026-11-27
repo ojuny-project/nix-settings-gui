@@ -8,7 +8,6 @@ use super::keybinds::{connect_keybind_row, keybind_rows_unchanged, keybinds_nix,
 use super::menu::{connect_menu_row, menu_rows_nix, menu_rows_unchanged, MenuRow};
 use super::monitors::{connect_monitor_row, monitor_row_unchanged, monitors_nix, MonitorRow};
 use super::mounts::{mounts_nix, mounts_unchanged, mounts_validation_error};
-use crate::mounts::MountRow;
 use super::nix::{
     canonical_list, canonical_module_list, entry_text, expr_literal, number_literal, package_items,
     package_literal, parse_string_literal, path_literal, quote, serialize_modules, string_literal,
@@ -23,6 +22,7 @@ use super::tile_nix::tiles_unchanged;
 use super::users::{self, UserRow};
 use crate::edit::PendingEdit;
 use crate::model::Record;
+use crate::mounts::MountRow;
 use crate::value;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -182,6 +182,7 @@ pub enum Editor {
         toggle: gtk::Switch,
         keys_present: Rc<Cell<Option<bool>>>,
     },
+    #[cfg(feature = "ojuny-widgets")]
     SysmonConfig {
         ui: Rc<super::sysmon::SysmonUi>,
         original: String,
@@ -230,6 +231,7 @@ impl Editor {
             Editor::Docker { root, .. } => root.clone().upcast(),
             Editor::Mounts { root, .. } => root.clone().upcast(),
             Editor::SecureBoot { root, .. } => root.clone().upcast(),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::SysmonConfig { ui, .. } => ui.root(),
             Editor::Raw { root, .. } => root.clone().upcast(),
         }
@@ -351,6 +353,7 @@ impl Editor {
             Editor::SecureBoot { toggle, .. } => {
                 if toggle.is_active() { "true" } else { "false" }.to_string()
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::SysmonConfig { ui, .. } => ui.to_nix(),
             Editor::Raw { view, .. } => {
                 let buffer = view.buffer();
@@ -466,6 +469,7 @@ impl Editor {
             } => docker_unchanged(rows, *orig_count),
             Editor::Mounts { rows, orig, .. } => mounts_unchanged(rows, orig),
             Editor::SecureBoot { toggle, .. } => toggle.is_active() == truthy(original),
+            #[cfg(feature = "ojuny-widgets")]
             Editor::SysmonConfig { ui, original, .. } => ui.unchanged(original),
             Editor::Grid { state, .. } => {
                 grid_unchanged(state)
@@ -701,6 +705,7 @@ impl Editor {
                 let update = update.clone();
                 toggle.connect_active_notify(move |_| update());
             }
+            #[cfg(feature = "ojuny-widgets")]
             Editor::SysmonConfig { ui, .. } => ui.set_on_change(update.clone()),
             Editor::Grid { state, .. } => {
                 *state.on_change.borrow_mut() = Some(update.clone());
@@ -716,6 +721,23 @@ impl Editor {
             }
         }
     }
+}
+
+/// Decode one row of a list control before it reaches the entry. `string_items`
+/// rows are written back with `string_literal`, so their source quotes must be
+/// removed on load or every save would add another layer.
+pub(crate) fn load_list_items(stored: &str, string_items: bool) -> Vec<String> {
+    value::list_items(stored)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|item| {
+            if string_items {
+                parse_string_literal(&item)
+            } else {
+                item
+            }
+        })
+        .collect()
 }
 
 pub(crate) fn serialize_list_items(raw: &[String], string_items: bool) -> String {
@@ -744,9 +766,28 @@ mod tests {
             serialize_list_items(&prose, true),
             "[ \"Welcome to Ojuny\" ]"
         );
+        assert_eq!(serialize_list_items(&prose, false), "[ Welcome to Ojuny ]");
+    }
+
+    #[test]
+    fn string_items_round_trip_without_doubling() {
+        let stored = "[ \"Tip one\" \"Tip two\" ]";
+        let loaded = load_list_items(stored, true);
+        assert_eq!(loaded, vec!["Tip one", "Tip two"]);
         assert_eq!(
-            serialize_list_items(&prose, false),
-            "[ Welcome to Ojuny ]"
+            serialize_list_items(&loaded, true),
+            "[ \"Tip one\" \"Tip two\" ]"
+        );
+        let again = load_list_items(&serialize_list_items(&loaded, true), true);
+        assert_eq!(again, loaded);
+    }
+
+    #[test]
+    fn expression_items_are_not_stripped() {
+        let stored = "[ pkgs.git \"Tip one\" ]";
+        assert_eq!(
+            load_list_items(stored, false),
+            vec!["pkgs.git", "\"Tip one\""]
         );
     }
 }

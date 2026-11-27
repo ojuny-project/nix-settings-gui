@@ -121,16 +121,21 @@ Configure action, or an "Add nixpkgs" action when it is absent. The dialog's
 first control is a "Flake location" dropdown listing NixOS channel, registry
 (indirect), GitHub, GitLab, SourceHut, Git, Mercurial, Path, Tarball, and File.
 Changing it rebuilds the field grid for that type and updates a live URL
-preview. Free-text fields carry an `EntryCompletion` dropdown; scannable fields
-also carry an explicit scan button. Scans never start on focus or typing, and a
-scan with blank prerequisites reports the missing field inline. Channel
-selection uses a dropdown of discovered `nixos-*` branches; hosted types expose
-owner, repository, ref, optional commit, host, directory, and git fetch
+preview. Owner, repository, ref, host, directory, and registry id are free-text
+fields with an `EntryCompletion` dropdown; scannable fields also carry an
+explicit scan button. Commit fields are an editable commit picker instead of a
+free-text hash: the picker shows the current value, lists the commits returned
+by `Scan commits`, and still accepts a typed hash. Scans never start on focus or
+typing, and a scan with blank prerequisites reports the missing field inline.
+Channel selection uses a dropdown of discovered `nixos-*` branches; hosted types
+expose owner, repository, ref, optional commit, host, directory, and git fetch
 switches; path adds a folder chooser; tarball and file add a NAR hash field.
 
 `Check for updates` reports progress for each input, offers a Cancel action, and
 stops an input that exceeds its timeout. A failed or timed-out input shows its
-error inline on that input's row instead of leaving the spinner running.
+error inline on that input's row instead of leaving the spinner running. The
+page keeps its scroll position while the progress messages rebuild it; the
+saved value is restored after the new adjustment has an upper bound.
 
 ### 1.5 Category view
 
@@ -149,8 +154,14 @@ launch that raises the open window.
   flat grid. The title beside those buttons names the level.
 - A category has no file and no `@menu icon`, so the home grid resolves one
   from a keyword catalog in `src/widgets/category_icon.rs`, then from the most
-  common page icon in that category, then `preferences-system-symbolic`. Page
+  common page icon in that category, then `emblem-system-symbolic`. Page
   tiles keep using `@menu icon`.
+- The application wraps the selected icon theme in `ojuny-icon-fallback`, whose
+  `index.theme` inherits the selected theme, then Adwaita and hicolor. The
+  wrapper lives in `$XDG_CACHE_HOME/nix-settings-gui/icons` and is installed at
+  startup by `src/icon_fallback.rs`. This keeps symbolic icons visible under
+  themes that lack them, such as Tela. `emblem-system-symbolic` is the final
+  fallback because Adwaita does not provide `preferences-system-symbolic`.
 - The search box filters tiles at the home and page-grid levels and keeps the
   existing control filter inside a page. Advanced and System only filter the
   tiles the same way they filter the menu list.

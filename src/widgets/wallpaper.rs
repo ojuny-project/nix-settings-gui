@@ -151,6 +151,11 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
     let remove = gtk::Button::with_label("Remove wallpaper");
     add.add_css_class("pill");
     remove.add_css_class("pill");
+    let status = gtk::Label::builder()
+        .xalign(0.0)
+        .wrap(true)
+        .css_classes(["dim-label", "caption"])
+        .build();
 
     let on_change: ChangeHook = Rc::new(RefCell::new(None));
     let view = WallpaperView {
@@ -161,6 +166,7 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
         module_dir,
         dir,
         remove: remove.clone(),
+        status: status.clone(),
         on_change: on_change.clone(),
         actions,
         nullable: record.spec.nullable,
@@ -184,6 +190,7 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
     toolbar.append(&add);
     toolbar.append(&remove);
     root.append(&toolbar);
+    root.append(&status);
 
     {
         let view = view.clone();
@@ -231,10 +238,9 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
             };
             fetch(
                 request,
-                Box::new(move |result| {
-                    if let Ok(set) = result {
-                        view.set_presets(set);
-                    }
+                Box::new(move |result| match result {
+                    Ok(set) => view.set_presets(set),
+                    Err(error) => view.presets_failed(&error),
                 }),
             );
         }
@@ -257,6 +263,7 @@ fn scroll_delta(delta: f64, unit: gtk::gdk::ScrollUnit, page: f64) -> f64 {
 
 impl WallpaperView {
     fn set_presets(&self, set: crate::metadata::WallpaperSet) {
+        let warning = set.warning.clone();
         let current = self.ui.borrow().current.clone();
         *self.presets.borrow_mut() = set
             .presets
@@ -287,6 +294,19 @@ impl WallpaperView {
                 }
             }
         }
+        self.status.set_text(if warning.trim().is_empty() {
+            ""
+        } else {
+            warning.trim()
+        });
+        self.refresh();
+    }
+
+    /// Keep the known preset names visible when the generated set cannot be
+    /// resolved, so the picker shows what is configured and why the previews
+    /// are missing instead of an empty strip.
+    fn presets_failed(&self, error: &str) {
+        self.status.set_text(error);
         self.refresh();
     }
 
@@ -350,6 +370,9 @@ impl WallpaperView {
 
         let kind = match &choice {
             WallpaperChoice::Auto => None,
+            WallpaperChoice::Preset(preset) if preset.path.as_os_str().is_empty() => {
+                Some("Preview unavailable")
+            }
             WallpaperChoice::Preset(_) => Some("Bundled"),
             WallpaperChoice::File(_) => Some("Custom"),
         };
@@ -660,6 +683,12 @@ fn append_preview(host: &gtk::Box, path: &Path, fallback: &impl Fn() -> gtk::Ima
     let placeholder = fallback();
     placeholder.set_tooltip_text(Some("Preview unavailable"));
     host.append(&placeholder);
+    let missing = gtk::Label::builder()
+        .label("Preview unavailable")
+        .wrap(true)
+        .css_classes(["dim-label", "caption"])
+        .build();
+    host.append(&missing);
     let host = host.clone();
     load_preview(path.to_path_buf(), move |texture| {
         let Some(texture) = texture else {

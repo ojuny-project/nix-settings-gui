@@ -80,8 +80,11 @@ fn fast_forward_error(dir: &str, error: String) -> String {
             Err(_) => return format!("{dir}: git pull refused: {error}"),
         };
         let range = format!("HEAD...{upstream}");
-        let counts = run_git(dir, &["rev-list", "--left-right", "--count", range.as_str()])
-            .unwrap_or_default();
+        let counts = run_git(
+            dir,
+            &["rev-list", "--left-right", "--count", range.as_str()],
+        )
+        .unwrap_or_default();
         match classify(counts.trim()) {
             Ok(RemoteState::Current) => {
                 format!("{dir}: git pull refused by {upstream}: {error}")
@@ -145,7 +148,10 @@ fn save_sync_state(dir: &str) -> Result<bool, String> {
     let upstream = upstream_ref(dir)?;
     run_git(dir, &["fetch"])?;
     let range = format!("HEAD...{upstream}");
-    let counts = run_git(dir, &["rev-list", "--left-right", "--count", range.as_str()])?;
+    let counts = run_git(
+        dir,
+        &["rev-list", "--left-right", "--count", range.as_str()],
+    )?;
     match classify(&counts)? {
         RemoteState::Current => {}
         RemoteState::Behind => {
@@ -338,7 +344,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["pull", "--no-edit"]
         );
-        assert_eq!(env_value(&sync, "GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
+        assert_eq!(
+            env_value(&sync, "GIT_TERMINAL_PROMPT").as_deref(),
+            Some("0")
+        );
         assert_eq!(env_value(&sync, "GIT_EDITOR").as_deref(), Some("true"));
 
         let open = git_command("/tmp", &pull_args(true));
@@ -373,5 +382,95 @@ mod tests {
             fast_forward_error("/repo", "git pull: no such remote".to_string()),
             "/repo: git pull: no such remote"
         );
+    }
+
+    fn git_in(dir: &Path, args: &[&str]) -> bool {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_AUTHOR_NAME", "test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
+            .env("GIT_COMMITTER_NAME", "test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.invalid")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn commit_file(dir: &Path, name: &str, text: &str) -> bool {
+        std::fs::write(dir.join(name), text).is_ok()
+            && git_in(dir, &["add", name])
+            && git_in(dir, &["commit", "-m", text])
+    }
+
+    /// A synced, ahead-only, behind-only and diverged repository must never be
+    /// reported as diverged just because `git pull --ff-only` refused.
+    #[test]
+    fn only_a_real_divergence_reports_diverged() {
+        if std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|output| !output.status.success())
+            .unwrap_or(true)
+        {
+            eprintln!("skipping git divergence regression test: git is unavailable");
+            return;
+        }
+        let root = std::env::temp_dir().join(format!(
+            "nsg-git-divergence-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        let seed = root.join("seed");
+        assert!(std::fs::create_dir_all(&root).is_ok());
+        assert!(git_in(&root, &["init", "--bare", "origin.git"]));
+        assert!(git_in(&root, &["clone", "origin.git", "seed"]));
+        assert!(git_in(&seed, &["checkout", "-B", "main"]));
+        assert!(commit_file(&seed, "file.txt", "one"));
+        assert!(git_in(&seed, &["push", "-u", "origin", "main"]));
+
+        let clone = |name: &str| {
+            let path = root.join(name);
+            assert!(git_in(&root, &["clone", "origin.git", name]));
+            path
+        };
+        let synced = clone("synced");
+        let ahead = clone("ahead");
+        assert!(commit_file(&ahead, "local.txt", "ahead"));
+        let behind = clone("behind");
+        let diverged = clone("diverged");
+        assert!(commit_file(&diverged, "local.txt", "local"));
+        assert!(commit_file(&seed, "remote.txt", "remote"));
+        assert!(git_in(&seed, &["push", "origin", "main"]));
+        assert!(git_in(&behind, &["fetch"]));
+        assert!(git_in(&diverged, &["fetch"]));
+
+        for (name, dir) in [("synced", &synced), ("ahead", &ahead), ("behind", &behind)] {
+            let message = fast_forward_error(
+                &dir.display().to_string(),
+                "fatal: Not possible to fast-forward, aborting.".to_string(),
+            );
+            assert!(
+                !message.contains("diverged"),
+                "{name} must not be reported as diverged: {message}"
+            );
+        }
+        let message = fast_forward_error(
+            &diverged.display().to_string(),
+            "fatal: Not possible to fast-forward, aborting.".to_string(),
+        );
+        assert!(message.contains("diverged"), "{message}");
+
+        let no_upstream = root.join("no-upstream");
+        assert!(git_in(&root, &["init", "no-upstream"]));
+        let message = fast_forward_error(
+            &no_upstream.display().to_string(),
+            "fatal: Not possible to fast-forward, aborting.".to_string(),
+        );
+        assert!(!message.contains("diverged"), "{message}");
     }
 }

@@ -16,7 +16,7 @@ mod flake_inputs;
 mod flake_lock;
 mod flake_ref;
 mod flake_update;
-#[allow(dead_code)]
+mod icon_fallback;
 mod metadata;
 #[allow(dead_code)]
 mod model;
@@ -30,6 +30,7 @@ mod plugin_list;
 #[cfg(feature = "ojuny-widgets")]
 mod plugin_schema;
 mod ref_suggest;
+mod revision;
 mod scan;
 mod secureboot;
 #[allow(dead_code)]
@@ -58,6 +59,9 @@ fn main() -> glib::ExitCode {
         .build();
     application.connect_startup(|_| {
         gtk::Window::set_default_icon_name("preferences-system");
+        if let Some(display) = gtk::gdk::Display::default() {
+            icon_fallback::install(&display);
+        }
     });
     app::run(&application)
 }

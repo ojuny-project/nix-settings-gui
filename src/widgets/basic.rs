@@ -1,10 +1,7 @@
 use super::context::PackageSearch;
 use super::editor::Editor;
-use super::nix::{
-    choice_literal, entry_text, number_literal, parse_string_literal, quote, truthy,
-};
+use super::nix::{choice_literal, entry_text, number_literal, parse_string_literal, quote, truthy};
 use crate::dsl::OptionSpec;
-use crate::value;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -266,7 +263,7 @@ pub(crate) fn build_list(
     }
     root.append(&add);
 
-    for item in value::list_items(value_text).unwrap_or_default() {
+    for item in super::editor::load_list_items(value_text, string_items) {
         add_list_row(&root, &entries, &item, packages, search);
     }
 

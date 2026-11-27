@@ -63,7 +63,13 @@ impl ConfigureForm {
         grid.attach(&terminal_entry, 1, 1, 1, 1);
         grid.attach(&gtk::Label::new(Some("Rebuild command")), 0, 2, 1, 1);
         grid.attach(&rebuild_entry, 1, 2, 1, 1);
-        grid.attach(&gtk::Label::new(Some("Environment reload command")), 0, 3, 1, 1);
+        grid.attach(
+            &gtk::Label::new(Some("Environment reload command")),
+            0,
+            3,
+            1,
+            1,
+        );
         grid.attach(&reload_entry, 1, 3, 1, 1);
 
         let style_picker = gtk::DropDown::from_strings(&["List", "Categories"]);
@@ -103,8 +109,7 @@ impl ConfigureForm {
             let mut config = app.config.borrow_mut();
             config.terminal_command = non_empty(self.terminal_entry.text().to_string());
             config.rebuild_command = non_empty(self.rebuild_entry.text().to_string());
-            config.environment_reload_command =
-                non_empty(self.reload_entry.text().to_string());
+            config.environment_reload_command = non_empty(self.reload_entry.text().to_string());
             config.view_mode = style_mode(self.style_picker.selected());
             if !flake.trim().is_empty() {
                 config.remember(flake.trim());
@@ -142,6 +147,14 @@ pub(super) fn build_page(app: &Rc<App>) -> gtk::Box {
         .css_classes(["dim-label"])
         .build();
     content.append(&subtitle);
+    let revision = gtk::Label::builder()
+        .label(format!("Running revision: {}", crate::revision::running()))
+        .xalign(0.0)
+        .wrap(true)
+        .selectable(true)
+        .css_classes(["dim-label", "caption"])
+        .build();
+    content.append(&revision);
 
     let form = Rc::new(ConfigureForm::new(app));
     content.append(form.root());
