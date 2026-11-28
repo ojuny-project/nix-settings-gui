@@ -295,6 +295,7 @@ pub(super) fn refresh(app: &Rc<App>) {
         .and_then(|child| child.downcast::<gtk::ScrolledWindow>().ok())
         .map(|window| window.vadjustment().value())
         .unwrap_or(0.0);
+    app.input_rows.borrow_mut().clear();
     update_warning(app);
     while let Some(child) = app.inputs_page.first_child() {
         app.inputs_page.remove(&child);
@@ -485,6 +486,51 @@ fn scrolled(content: gtk::Box) -> gtk::ScrolledWindow {
         .build()
 }
 
+/// The widgets of one input row that a progress message changes. `status`
+/// carries the check summary and `holder` carries the conditional Update
+/// button, so a row is updated without rebuilding the page.
+#[derive(Clone)]
+pub(super) struct InputRowHandle {
+    status: gtk::Label,
+    holder: gtk::Box,
+    has_update: Rc<Cell<bool>>,
+}
+
+/// Refresh one input row from the current check results.
+pub(super) fn update_row(app: &Rc<App>, name: &str) {
+    let Some(handle) = app.input_rows.borrow().get(name).cloned() else {
+        return;
+    };
+    let checked = app.input_checks.borrow().get(name).cloned();
+    match &checked {
+        Some(status) => {
+            let (summary, _) = update_summary(status);
+            handle.status.set_text(&summary);
+            handle.status.set_visible(true);
+        }
+        None => handle.status.set_visible(false),
+    }
+    let has_update = checked
+        .and_then(|result| result.ok())
+        .map(|status| {
+            matches!(
+                &status.state,
+                InputState::UpdateAvailable | InputState::NotLocked
+            )
+        })
+        .unwrap_or(false);
+    if has_update == handle.has_update.get() {
+        return;
+    }
+    while let Some(child) = handle.holder.first_child() {
+        handle.holder.remove(&child);
+    }
+    if has_update {
+        handle.holder.append(&update_button(app, name));
+    }
+    handle.has_update.set(has_update);
+}
+
 fn input_row(app: &Rc<App>, input: &FlakeInput) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     row.set_margin_top(8);
@@ -513,33 +559,17 @@ fn input_row(app: &Rc<App>, input: &FlakeInput) -> gtk::Box {
         .build();
     text.append(&name);
     text.append(&subtitle);
-    if let Some(status) = app.input_checks.borrow().get(&input.name).cloned() {
-        let (summary, _) = update_summary(&status);
-        let update_label = gtk::Label::builder()
-            .label(&summary)
-            .xalign(0.0)
-            .wrap(true)
-            .css_classes(["dim-label"])
-            .build();
-        text.append(&update_label);
-    }
+    let status = gtk::Label::builder()
+        .xalign(0.0)
+        .wrap(true)
+        .css_classes(["dim-label"])
+        .build();
+    status.set_visible(false);
+    text.append(&status);
     row.append(&text);
 
-    let has_update = app
-        .input_checks
-        .borrow()
-        .get(&input.name)
-        .and_then(|result| result.as_ref().ok())
-        .map(|status| {
-            matches!(
-                &status.state,
-                InputState::UpdateAvailable | InputState::NotLocked
-            )
-        })
-        .unwrap_or(false);
-    if has_update {
-        row.append(&update_button(app, &input.name));
-    }
+    let holder = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    row.append(&holder);
 
     let cog = gtk::Button::builder()
         .icon_name("emblem-system-symbolic")
@@ -564,6 +594,16 @@ fn input_row(app: &Rc<App>, input: &FlakeInput) -> gtk::Box {
         delete.connect_clicked(move |_| confirm_delete(&app, &name));
     }
     row.append(&delete);
+
+    app.input_rows.borrow_mut().insert(
+        input.name.clone(),
+        InputRowHandle {
+            status,
+            holder,
+            has_update: Rc::new(Cell::new(false)),
+        },
+    );
+    update_row(app, &input.name);
 
     row
 }

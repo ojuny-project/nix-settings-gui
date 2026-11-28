@@ -82,6 +82,9 @@ fn connect_apply(record: &Record, editor: &Editor, ctx: &BuildContext) {
     let snapshot = editor.clone();
     let path = full_path(record, ctx);
     let update: Rc<dyn Fn()> = Rc::new(move || {
+        if snapshot.apply_error().is_some() {
+            return;
+        }
         hook(ApplyRequest {
             path: path.clone(),
             command: command.clone(),

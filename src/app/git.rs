@@ -92,6 +92,21 @@ fn ahead_behind(dir: &str, upstream: &str) -> Result<String, String> {
     )
 }
 
+fn merge_refs(dir: &str) -> String {
+    let branch = current_branch(dir).unwrap_or_default();
+    let key = format!("branch.{branch}.merge");
+    let refs = run_git(dir, &["config", "--get-all", &key]).unwrap_or_default();
+    let listed: Vec<&str> = refs
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    if listed.is_empty() {
+        "none".to_string()
+    } else {
+        listed.join(", ")
+    }
+}
+
 fn blocking_paths(dir: &str) -> String {
     let paths = run_git(dir, &["diff", "--name-only"]).unwrap_or_default();
     let listed: Vec<&str> = paths
@@ -115,13 +130,22 @@ fn fast_forward_error(dir: &str, error: String) -> String {
             Err(_) => return format!("{dir}: git pull refused: {error}"),
         };
         let counts = ahead_behind(dir, &upstream).unwrap_or_default();
+        let merge = merge_refs(dir);
         match classify(counts.trim()) {
             Ok(RemoteState::Current) => {
-                format!("{dir}: git pull refused by {upstream}: {error}")
+                format!("{dir}: git pull refused by {upstream}: {error} (merge refs: {merge})")
             }
-            Ok(RemoteState::Behind) => behind_message(dir, &upstream, counts.trim()),
-            Ok(RemoteState::Diverged) => divergence_message(dir, &upstream, counts.trim()),
-            Err(_) => format!("{dir}: git pull refused by {upstream}: {error}"),
+            Ok(RemoteState::Behind) => format!(
+                "{} (merge refs: {merge})",
+                behind_message(dir, &upstream, counts.trim())
+            ),
+            Ok(RemoteState::Diverged) => format!(
+                "{} (merge refs: {merge})",
+                divergence_message(dir, &upstream, counts.trim())
+            ),
+            Err(_) => {
+                format!("{dir}: git pull refused by {upstream}: {error} (merge refs: {merge})")
+            }
         }
     } else {
         format!("{dir}: {error}")

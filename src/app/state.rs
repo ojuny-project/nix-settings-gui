@@ -281,6 +281,9 @@ pub(super) struct App {
     pub(super) secureboot_loading: Cell<bool>,
     pub(super) input_checks:
         RefCell<HashMap<String, Result<crate::flake_update::InputStatus, String>>>,
+    /// The row widgets currently on the Flake Inputs page, so a progress
+    /// message updates one row without rebuilding the page.
+    pub(super) input_rows: RefCell<HashMap<String, super::inputs::InputRowHandle>>,
     pub(super) input_checking: Cell<bool>,
     pub(super) input_check_epoch: Cell<u64>,
     pub(super) input_check_cancel: RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,

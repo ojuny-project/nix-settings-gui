@@ -373,6 +373,15 @@ impl Editor {
         }
     }
 
+    /// Why a live apply must not run for this editor, if it cannot. A preset
+    /// with no resolved path has no value to send.
+    pub fn apply_error(&self) -> Option<String> {
+        match self {
+            Editor::Wallpaper { ui, .. } => ui.borrow().apply_error(),
+            _ => None,
+        }
+    }
+
     /// Whether the editor still holds the original value, ignoring formatting
     /// differences, so an untouched control never triggers a rewrite.
     pub fn unchanged(&self, original: &str) -> bool {

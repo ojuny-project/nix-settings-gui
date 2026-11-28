@@ -173,7 +173,16 @@ pub fn scan_refs(
     }
 }
 
+/// One scanned commit: the hash written into the flake URL and its date.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitEntry {
+    pub sha: String,
+    /// `YYYY-MM-DD` when the forge reports a date, otherwise empty.
+    pub date: String,
+}
+
 /// List commit hashes on `branch`.
+#[allow(dead_code)]
 pub fn scan_commits(
     kind: &str,
     host: Option<&str>,
@@ -181,6 +190,20 @@ pub fn scan_commits(
     repo: &str,
     branch: &str,
 ) -> Result<Vec<String>, String> {
+    Ok(scan_commit_details(kind, host, owner, repo, branch)?
+        .into_iter()
+        .map(|commit| commit.sha)
+        .collect())
+}
+
+/// List commits on `branch` with their dates, for the commit picker.
+pub fn scan_commit_details(
+    kind: &str,
+    host: Option<&str>,
+    owner: &str,
+    repo: &str,
+    branch: &str,
+) -> Result<Vec<CommitEntry>, String> {
     let owner = require("owner", owner)?;
     let repo = require("repository", repo)?;
     let branch = require("branch", branch)?;
@@ -194,16 +217,8 @@ pub fn scan_commits(
                 encode_query_value(branch)
             );
             match http_json(&url, "github") {
-                Ok(value) => Ok(sorted(
-                    value
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|commit| commit.get("sha").and_then(Value::as_str))
-                        .map(str::to_string)
-                        .collect(),
-                )),
-                Err(_) => git_tip(&host_url(kind, host, owner, repo), branch),
+                Ok(value) => Ok(sorted_commits(github_commits(&value))),
+                Err(_) => git_tip_details(&host_url(kind, host, owner, repo), branch),
             }
         }
         "gitlab" => {
@@ -214,19 +229,11 @@ pub fn scan_commits(
                 encode_query_value(branch)
             );
             match http_json(&url, "gitlab") {
-                Ok(value) => Ok(sorted(
-                    value
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|commit| commit.get("id").and_then(Value::as_str))
-                        .map(str::to_string)
-                        .collect(),
-                )),
-                Err(_) => git_tip(&host_url(kind, host, owner, repo), branch),
+                Ok(value) => Ok(sorted_commits(gitlab_commits(&value))),
+                Err(_) => git_tip_details(&host_url(kind, host, owner, repo), branch),
             }
         }
-        "sourcehut" => git_tip(&host_url(kind, host, owner, repo), branch),
+        "sourcehut" => git_tip_details(&host_url(kind, host, owner, repo), branch),
         _ => Err(format!("`{kind}` does not support commit scans")),
     }
 }
@@ -240,10 +247,20 @@ pub fn scan_git_refs(url: &str) -> Result<Vec<String>, String> {
 }
 
 /// List the tip commit of `branch` for an arbitrary git URL.
+#[allow(dead_code)]
 pub fn scan_git_commits(url: &str, branch: &str) -> Result<Vec<String>, String> {
+    Ok(scan_git_commit_details(url, branch)?
+        .into_iter()
+        .map(|commit| commit.sha)
+        .collect())
+}
+
+/// List the tip commit of `branch` with its date for an arbitrary git URL.
+/// `git ls-remote` reports no date, so the date stays empty.
+pub fn scan_git_commit_details(url: &str, branch: &str) -> Result<Vec<CommitEntry>, String> {
     let url = require("repository URL", url)?;
     let branch = require("branch", branch)?;
-    git_tip(url, branch)
+    git_tip_details(url, branch)
 }
 
 /// List flake ids from the local flake registry.
@@ -352,7 +369,7 @@ fn git_refs(url: &str, tags: bool) -> Result<Vec<String>, String> {
     ))
 }
 
-fn git_tip(url: &str, branch: &str) -> Result<Vec<String>, String> {
+fn git_tip_details(url: &str, branch: &str) -> Result<Vec<CommitEntry>, String> {
     let reference = format!("refs/heads/{branch}");
     let output = Command::new("git")
         .args(["ls-remote", url, &reference])
@@ -372,9 +389,68 @@ fn git_tip(url: &str, branch: &str) -> Result<Vec<String>, String> {
         .find_map(|line| line.split('\t').next())
         .map(str::to_string);
     match tip {
-        Some(tip) => Ok(vec![tip]),
+        Some(sha) => Ok(vec![CommitEntry {
+            sha,
+            date: String::new(),
+        }]),
         None => Err(format!("branch `{branch}` was not found")),
     }
+}
+
+fn github_commits(value: &Value) -> Vec<CommitEntry> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|commit| {
+            let sha = commit.get("sha").and_then(Value::as_str)?;
+            let date = commit
+                .get("commit")
+                .and_then(|commit| commit.get("committer").or_else(|| commit.get("author")))
+                .and_then(|author| author.get("date"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            Some(CommitEntry {
+                sha: sha.to_string(),
+                date: commit_date(date),
+            })
+        })
+        .collect()
+}
+
+fn gitlab_commits(value: &Value) -> Vec<CommitEntry> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|commit| {
+            let sha = commit.get("id").and_then(Value::as_str)?;
+            let date = commit
+                .get("committed_date")
+                .or_else(|| commit.get("created_at"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            Some(CommitEntry {
+                sha: sha.to_string(),
+                date: commit_date(date),
+            })
+        })
+        .collect()
+}
+
+/// A forge timestamp is ISO 8601; the picker shows its calendar date.
+fn commit_date(timestamp: &str) -> String {
+    if timestamp.len() >= 10 && timestamp.as_bytes().get(4) == Some(&b'-') {
+        timestamp[..10].to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn sorted_commits(mut commits: Vec<CommitEntry>) -> Vec<CommitEntry> {
+    commits.sort_by(|a, b| a.sha.cmp(&b.sha));
+    commits.dedup_by(|a, b| a.sha == b.sha);
+    commits
 }
 
 fn http_json(url: &str, forge: &str) -> Result<Value, String> {
@@ -449,6 +525,83 @@ mod tests {
         assert!(scan_repos("github", None, " ").is_err());
         assert!(scan_refs("github", None, "NixOS", "", false).is_err());
         assert!(scan_commits("github", None, "NixOS", "nixpkgs", "").is_err());
+        assert!(scan_commit_details("github", None, "NixOS", "nixpkgs", "").is_err());
         assert!(scan_git_refs("").is_err());
+    }
+
+    #[test]
+    fn reads_github_commit_shas_and_dates() {
+        let json: Value = serde_json::from_str(
+            r#"[{"sha":"abc123","commit":{"committer":{"date":"2026-11-27T10:00:00Z"}}},
+                {"sha":"def456","commit":{"author":{"date":"2026-11-26T09:30:00Z"}}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            github_commits(&json),
+            vec![
+                CommitEntry {
+                    sha: "abc123".to_string(),
+                    date: "2026-11-27".to_string(),
+                },
+                CommitEntry {
+                    sha: "def456".to_string(),
+                    date: "2026-11-26".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_gitlab_commit_shas_and_dates() {
+        let json: Value = serde_json::from_str(
+            r#"[{"id":"abc123","committed_date":"2026-11-27T10:00:00.000+00:00"},
+                {"id":"def456","created_at":"2026-11-26T09:30:00.000+00:00"}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            gitlab_commits(&json),
+            vec![
+                CommitEntry {
+                    sha: "abc123".to_string(),
+                    date: "2026-11-27".to_string(),
+                },
+                CommitEntry {
+                    sha: "def456".to_string(),
+                    date: "2026-11-26".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn commit_date_keeps_only_the_calendar_day() {
+        assert_eq!(commit_date("2026-11-27T10:00:00Z"), "2026-11-27");
+        assert_eq!(commit_date("not-a-date"), "");
+        assert_eq!(commit_date(""), "");
+    }
+
+    #[test]
+    fn commit_hashes_are_sorted_and_deduplicated() {
+        let commits = sorted_commits(vec![
+            CommitEntry {
+                sha: "b".to_string(),
+                date: String::new(),
+            },
+            CommitEntry {
+                sha: "a".to_string(),
+                date: String::new(),
+            },
+            CommitEntry {
+                sha: "a".to_string(),
+                date: "2026-11-27".to_string(),
+            },
+        ]);
+        assert_eq!(
+            commits
+                .iter()
+                .map(|commit| commit.sha.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
     }
 }

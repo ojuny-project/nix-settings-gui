@@ -184,8 +184,8 @@ fn wallpaper_set_hook(app: &Rc<App>) -> widgets::WallpaperSetHook {
         let target = {
             let raw = app.target.borrow().clone();
             match Target::parse(&raw) {
-                Some(Target::Nixos(_)) => format!("nixos:{}", app.current_host.borrow()),
-                _ => raw,
+                Some(target) => target.wallpaper_arg(&app.current_host.borrow()),
+                None => raw,
             }
         };
         let preset_option = request.preset_option.clone().unwrap_or_default();
@@ -453,6 +453,10 @@ fn apply_now(app: &Rc<App>, path: &str, command: &str, editor: &Editor) {
         editor,
         Editor::Submodule { .. } | Editor::HorizontalSubmodule { .. }
     ) {
+        return;
+    }
+    if let Some(error) = editor.apply_error() {
+        app.status.set_text(&format!("Apply failed: {error}"));
         return;
     }
     super::apply::schedule(

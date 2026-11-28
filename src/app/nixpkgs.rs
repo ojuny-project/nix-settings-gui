@@ -19,6 +19,8 @@ use super::state::App;
 
 type ScanTask = Box<dyn FnOnce() -> Result<Vec<String>, String> + Send>;
 type Done = Rc<dyn Fn(&[String])>;
+type CommitScanTask = Box<dyn FnOnce() -> Result<Vec<ref_suggest::CommitEntry>, String> + Send>;
+type CommitDone = Rc<dyn Fn(&[ref_suggest::CommitEntry])>;
 
 /// The nixpkgs card shown above the regular input list.
 pub(super) fn section(app: &Rc<App>, document: &InputDocument) -> adw::PreferencesGroup {
@@ -530,24 +532,46 @@ impl CommitPicker {
         self.entry.text().to_string()
     }
 
+    #[allow(dead_code)]
     fn fill(&self, values: &[String]) {
+        let entries: Vec<ref_suggest::CommitEntry> = values
+            .iter()
+            .map(|sha| ref_suggest::CommitEntry {
+                sha: sha.clone(),
+                date: String::new(),
+            })
+            .collect();
+        self.fill_entries(&entries);
+    }
+
+    fn fill_entries(&self, entries: &[ref_suggest::CommitEntry]) {
         while let Some(child) = self.list.first_child() {
             self.list.remove(&child);
         }
-        for value in values {
+        for entry in entries {
             let row = gtk::ListBoxRow::new();
-            row.set_widget_name(value);
-            let label = gtk::Label::builder()
+            row.set_widget_name(&entry.sha);
+            let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let sha = gtk::Label::builder()
                 .xalign(0.0)
-                .label(value)
+                .label(&entry.sha)
                 .css_classes(["monospace"])
                 .build();
-            row.set_child(Some(&label));
+            line.append(&sha);
+            if !entry.date.is_empty() {
+                let date = gtk::Label::builder()
+                    .xalign(0.0)
+                    .label(format!("· {}", entry.date))
+                    .css_classes(["dim-label", "caption"])
+                    .build();
+                line.append(&date);
+            }
+            row.set_child(Some(&line));
             self.list.append(&row);
         }
         if self.entry.text().trim().is_empty() {
-            if let Some(first) = values.first() {
-                self.entry.set_text(first);
+            if let Some(first) = entries.first() {
+                self.entry.set_text(&first.sha);
             }
         }
         self.entry.grab_focus();
@@ -751,12 +775,67 @@ fn set_text(entry: &gtk::Entry, value: &str) {
     entry.set_text(value);
 }
 
+/// The commit scan variant of `run_scan`: it caches and renders hashes with
+/// their dates, which the plain string cache cannot represent.
+fn run_commit_scan(
+    button: &gtk::Button,
+    error: &gtk::Label,
+    cache: &Rc<RefCell<HashMap<String, Vec<ref_suggest::CommitEntry>>>>,
+    make: impl Fn() -> Result<(String, CommitScanTask), String> + 'static,
+    done: impl Fn(&[ref_suggest::CommitEntry]) + 'static,
+) {
+    let button = button.clone();
+    let handler = button.clone();
+    let error = error.clone();
+    let cache = cache.clone();
+    let done: CommitDone = Rc::new(done);
+    handler.connect_clicked(move |_| {
+        error.set_text("");
+        let (key, task) = match make() {
+            Ok(value) => value,
+            Err(message) => {
+                error.set_text(&message);
+                return;
+            }
+        };
+        if let Some(values) = cache.borrow().get(&key).cloned() {
+            done(&values);
+            return;
+        }
+        let button = button.clone();
+        let error = error.clone();
+        let cache = cache.clone();
+        let done = done.clone();
+        button.set_sensitive(false);
+        let (sender, receiver) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let _ = sender.send_blocking(task());
+        });
+        glib::MainContext::default().spawn_local(async move {
+            let result = receiver
+                .recv()
+                .await
+                .unwrap_or_else(|_| Err("scan stopped unexpectedly".to_string()));
+            button.set_sensitive(true);
+            match result {
+                Ok(values) if values.is_empty() => error.set_text("Scan returned no results"),
+                Ok(values) => {
+                    cache.borrow_mut().insert(key, values.clone());
+                    done(&values);
+                }
+                Err(message) => error.set_text(&message),
+            }
+        });
+    });
+}
+
 fn build_form(
     app: &Rc<App>,
     grid: &gtk::Grid,
     state: &Rc<RefCell<FormState>>,
     update: &Rc<dyn Fn()>,
     cache: &Rc<RefCell<HashMap<String, Vec<String>>>>,
+    commit_cache: &Rc<RefCell<HashMap<String, Vec<ref_suggest::CommitEntry>>>>,
     error: &gtk::Label,
 ) {
     while let Some(child) = grid.first_child() {
@@ -828,10 +907,10 @@ fn build_form(
             });
             form.picker("Commit (optional)", &commit);
             let state_for_scan = state.clone();
-            run_scan(
+            run_commit_scan(
                 &commit.button,
                 error,
-                cache,
+                commit_cache,
                 move || {
                     let channel = state_for_scan.borrow().channel.clone();
                     let channel = required("channel", &channel)?;
@@ -840,13 +919,15 @@ fn build_form(
                     Ok((
                         key,
                         Box::new(move || {
-                            ref_suggest::scan_commits("github", None, "NixOS", "nixpkgs", &branch)
+                            ref_suggest::scan_commit_details(
+                                "github", None, "NixOS", "nixpkgs", &branch,
+                            )
                         }),
                     ))
                 },
                 {
                     let commit = commit.clone();
-                    move |values| commit.fill(values)
+                    move |values| commit.fill_entries(values)
                 },
             );
             form.note("Channels resolve to github:NixOS/nixpkgs/<branch>.");
@@ -1009,10 +1090,10 @@ fn build_form(
             form.picker("Commit (optional)", &commit);
             let state_for_scan = state.clone();
             let kind_for_commits = kind.clone();
-            run_scan(
+            run_commit_scan(
                 &commit.button,
                 error,
-                cache,
+                commit_cache,
                 move || {
                     let owner = state_for_scan.borrow().owner.clone();
                     let owner = required("owner", &owner)?;
@@ -1034,7 +1115,7 @@ fn build_form(
                     Ok((
                         key,
                         Box::new(move || {
-                            ref_suggest::scan_commits(
+                            ref_suggest::scan_commit_details(
                                 &kind,
                                 host.as_deref(),
                                 &owner,
@@ -1046,7 +1127,7 @@ fn build_form(
                 },
                 {
                     let commit = commit.clone();
-                    move |values| commit.fill(values)
+                    move |values| commit.fill_entries(values)
                 },
             );
 
@@ -1110,10 +1191,10 @@ fn build_form(
             bind_picker(&rev_entry, state, update, |state, value| state.rev = value);
             form.picker("Commit (optional)", &rev_entry);
             let state_for_scan = state.clone();
-            run_scan(
+            run_commit_scan(
                 &rev_entry.button,
                 error,
-                cache,
+                commit_cache,
                 move || {
                     let url = state_for_scan.borrow().url.clone();
                     let url = required("repository URL", &url)?;
@@ -1122,12 +1203,12 @@ fn build_form(
                     let key = format!("git-commits:{url}:{branch}");
                     Ok((
                         key,
-                        Box::new(move || ref_suggest::scan_git_commits(&url, &branch)),
+                        Box::new(move || ref_suggest::scan_git_commit_details(&url, &branch)),
                     ))
                 },
                 {
                     let rev_entry = rev_entry.clone();
-                    move |values| rev_entry.fill(values)
+                    move |values| rev_entry.fill_entries(values)
                 },
             );
 
@@ -1290,6 +1371,8 @@ fn open_dialog(app: &Rc<App>, existing: Option<FlakeInput>) {
     content.append(&error);
 
     let cache: Rc<RefCell<HashMap<String, Vec<String>>>> = Rc::new(RefCell::new(HashMap::new()));
+    let commit_cache: Rc<RefCell<HashMap<String, Vec<ref_suggest::CommitEntry>>>> =
+        Rc::new(RefCell::new(HashMap::new()));
     let update: Rc<dyn Fn()> = {
         let state = state.clone();
         let preview = preview.clone();
@@ -1302,7 +1385,7 @@ fn open_dialog(app: &Rc<App>, existing: Option<FlakeInput>) {
         })
     };
 
-    build_form(app, &grid, &state, &update, &cache, &error);
+    build_form(app, &grid, &state, &update, &cache, &commit_cache, &error);
     update();
     {
         let app = app.clone();
@@ -1310,13 +1393,14 @@ fn open_dialog(app: &Rc<App>, existing: Option<FlakeInput>) {
         let state = state.clone();
         let update = update.clone();
         let cache = cache.clone();
+        let commit_cache = commit_cache.clone();
         let error = error.clone();
         kind_combo.connect_changed(move |combo| {
             let Some(id) = combo.active_id() else {
                 return;
             };
             state.borrow_mut().kind = id.to_string();
-            build_form(&app, &grid, &state, &update, &cache, &error);
+            build_form(&app, &grid, &state, &update, &cache, &commit_cache, &error);
             update();
         });
     }

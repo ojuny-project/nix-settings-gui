@@ -39,6 +39,16 @@ enum WallpaperChoice {
     File(WallpaperFile),
 }
 
+/// Where the preset fetch for this control stands. The strip shows its own
+/// state so an unresolved preset is never mistaken for a missing preview.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PresetFetch {
+    Skipped,
+    Loading,
+    Loaded,
+    Failed(String),
+}
+
 impl WallpaperChoice {
     fn nix_value(&self) -> String {
         match self {
@@ -53,12 +63,23 @@ impl WallpaperChoice {
             WallpaperChoice::Auto => "null".to_string(),
             WallpaperChoice::Preset(preset) => {
                 if preset.path.as_os_str().is_empty() {
-                    quote(&preset.name)
+                    String::new()
                 } else {
                     quote(&preset.path.to_string_lossy())
                 }
             }
             WallpaperChoice::File(file) => quote(&file.absolute.to_string_lossy()),
+        }
+    }
+
+    /// Why this choice cannot be applied to the live desktop, if it cannot.
+    fn apply_error(&self) -> Option<String> {
+        match self {
+            WallpaperChoice::Preset(preset) if preset.path.as_os_str().is_empty() => Some(format!(
+                "the wallpaper preset \"{}\" has no resolved path",
+                preset.name
+            )),
+            _ => None,
         }
     }
 }
@@ -85,6 +106,12 @@ impl WallpaperUi {
         }
     }
 
+    /// The reason a live apply cannot run, so the app reports it instead of
+    /// substituting an empty value.
+    pub(crate) fn apply_error(&self) -> Option<String> {
+        self.current.apply_error()
+    }
+
     fn can_remove(&self, dir: &Path) -> bool {
         match &self.current {
             WallpaperChoice::Auto | WallpaperChoice::Preset(_) => false,
@@ -104,6 +131,7 @@ struct WallpaperView {
     scrolled: gtk::ScrolledWindow,
     ui: Rc<RefCell<WallpaperUi>>,
     presets: Rc<RefCell<Vec<WallpaperPresetChoice>>>,
+    fetch: Rc<RefCell<PresetFetch>>,
     module_dir: PathBuf,
     dir: PathBuf,
     remove: gtk::Button,
@@ -132,6 +160,7 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
     if let WallpaperChoice::Preset(preset) = &ui.borrow().current {
         presets.borrow_mut().push(preset.clone());
     }
+    let fetch = Rc::new(RefCell::new(PresetFetch::Skipped));
 
     let strip = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     strip.add_css_class("wallpaper-strip");
@@ -163,6 +192,7 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
         scrolled,
         ui,
         presets,
+        fetch,
         module_dir,
         dir,
         remove: remove.clone(),
@@ -231,6 +261,8 @@ pub(crate) fn build_wallpaper(record: &Record, value_text: &str, ctx: &BuildCont
 
     if record.spec.preset_source.is_some() || record.spec.preset_option.is_some() {
         if let Some(fetch) = ctx.wallpaper_set.clone() {
+            *view.fetch.borrow_mut() = PresetFetch::Loading;
+            view.status.set_text("Loading wallpaper presets...");
             let view = view.clone();
             let request = super::context::WallpaperRequest {
                 preset_source: record.spec.preset_source.clone(),
@@ -264,6 +296,8 @@ fn scroll_delta(delta: f64, unit: gtk::gdk::ScrollUnit, page: f64) -> f64 {
 impl WallpaperView {
     fn set_presets(&self, set: crate::metadata::WallpaperSet) {
         let warning = set.warning.clone();
+        let no_presets = set.presets.is_empty();
+        let no_paths = !no_presets && set.presets.iter().all(|preset| preset.path.is_empty());
         let current = self.ui.borrow().current.clone();
         *self.presets.borrow_mut() = set
             .presets
@@ -294,11 +328,32 @@ impl WallpaperView {
                 }
             }
         }
-        self.status.set_text(if warning.trim().is_empty() {
-            ""
+        let state = if no_presets {
+            PresetFetch::Failed(
+                "no wallpaper presets were returned; check presetSource and presetOption"
+                    .to_string(),
+            )
+        } else if no_paths {
+            PresetFetch::Failed("the wallpaper presets have no resolved paths".to_string())
         } else {
-            warning.trim()
-        });
+            PresetFetch::Loaded
+        };
+        *self.fetch.borrow_mut() = state.clone();
+        match &state {
+            PresetFetch::Failed(error) => {
+                self.status.add_css_class("error");
+                self.status
+                    .set_text(&format!("Wallpaper presets unavailable: {error}"));
+            }
+            _ => {
+                self.status.remove_css_class("error");
+                self.status.set_text(if warning.trim().is_empty() {
+                    ""
+                } else {
+                    warning.trim()
+                });
+            }
+        }
         self.refresh();
     }
 
@@ -306,7 +361,10 @@ impl WallpaperView {
     /// resolved, so the picker shows what is configured and why the previews
     /// are missing instead of an empty strip.
     fn presets_failed(&self, error: &str) {
-        self.status.set_text(error);
+        *self.fetch.borrow_mut() = PresetFetch::Failed(error.to_string());
+        self.status.add_css_class("error");
+        self.status
+            .set_text(&format!("Wallpaper presets unavailable: {error}"));
         self.refresh();
     }
 
@@ -325,7 +383,13 @@ impl WallpaperView {
             });
         }
 
+        let state = self.fetch.borrow().clone();
+        let mut unresolved = Vec::new();
         for preset in self.presets.borrow().clone() {
+            if !matches!(&state, PresetFetch::Loaded) && preset.path.as_os_str().is_empty() {
+                unresolved.push(preset);
+                continue;
+            }
             let choice = WallpaperChoice::Preset(preset);
             let button = self.build_tile(choice.clone());
             self.strip.append(&button);
@@ -339,8 +403,58 @@ impl WallpaperView {
             tiles.push(WallpaperTile { button, choice });
         }
 
+        match &state {
+            PresetFetch::Loading => {
+                self.strip
+                    .append(&self.state_tile("Loading wallpaper presets...", true));
+            }
+            PresetFetch::Failed(error) => {
+                self.strip.append(
+                    &self.state_tile(&format!("Wallpaper presets unavailable: {error}"), false),
+                );
+                for preset in unresolved {
+                    let choice = WallpaperChoice::Preset(preset);
+                    let button = self.build_tile(choice.clone());
+                    self.strip.append(&button);
+                    tiles.push(WallpaperTile { button, choice });
+                }
+            }
+            PresetFetch::Skipped | PresetFetch::Loaded => {
+                for preset in unresolved {
+                    let choice = WallpaperChoice::Preset(preset);
+                    let button = self.build_tile(choice.clone());
+                    self.strip.append(&button);
+                    tiles.push(WallpaperTile { button, choice });
+                }
+            }
+        }
+
         self.ui.borrow_mut().tiles = tiles;
         self.apply_selection();
+    }
+
+    /// A non-selectable tile that reports the preset fetch state in the strip
+    /// itself, so an empty result is visible where the previews should be.
+    fn state_tile(&self, text: &str, loading: bool) -> gtk::Box {
+        let tile = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        tile.set_size_request(TILE_WIDTH, PREVIEW_HEIGHT + 48);
+        tile.set_valign(gtk::Align::Center);
+        tile.add_css_class("wallpaper-state");
+        if loading {
+            let spinner = gtk::Spinner::new();
+            spinner.set_halign(gtk::Align::Center);
+            spinner.start();
+            tile.append(&spinner);
+        }
+        let label = gtk::Label::builder()
+            .label(text)
+            .wrap(true)
+            .justify(gtk::Justification::Center)
+            .max_width_chars(24)
+            .css_classes(["dim-label", "caption"])
+            .build();
+        tile.append(&label);
+        tile
     }
 
     fn build_tile(&self, choice: WallpaperChoice) -> gtk::Button {
@@ -856,6 +970,11 @@ fn install_css() {
   border-color: @accent_bg_color;
   background: alpha(@accent_bg_color, 0.14);
 }
+.wallpaper-state {
+  padding: 8px;
+  border: 1px dashed alpha(currentColor, 0.25);
+  border-radius: 8px;
+}
 .wallpaper-preview { border-radius: 6px; background: alpha(currentColor, 0.10); }
 ";
         let provider = gtk::CssProvider::new();
@@ -938,7 +1057,23 @@ mod tests {
         };
         assert_eq!(preset.name, "stripes");
         assert_eq!(choice.nix_value(), "\"stripes\"");
-        assert_eq!(choice.apply_literal(), "\"stripes\"");
+    }
+
+    #[test]
+    fn an_unresolved_preset_does_not_apply_its_name() {
+        let preset = WallpaperPresetChoice {
+            name: "stripes".to_string(),
+            label: "Stripes".to_string(),
+            path: PathBuf::new(),
+        };
+        let ui = WallpaperUi {
+            current: WallpaperChoice::Preset(preset),
+            tiles: Vec::new(),
+            default_path: None,
+        };
+        assert_eq!(ui.nix_value(), "\"stripes\"");
+        assert_eq!(ui.apply_literal(), "");
+        assert!(ui.apply_error().is_some());
     }
 
     #[test]
@@ -1016,6 +1151,7 @@ mod tests {
             ui.apply_literal(),
             "\"/nix/store/abc/user/builtin/everforest.png\""
         );
+        assert!(ui.apply_error().is_none());
     }
 
     #[test]

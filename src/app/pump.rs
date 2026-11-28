@@ -384,7 +384,7 @@ pub(super) fn handle_msg(app: &Rc<App>, tx: &Tx, msg: Msg) {
             app.status
                 .set_text(&format!("Checking {name} ({index}/{total})"));
             if app.showing_inputs.get() {
-                inputs::refresh(app);
+                inputs::update_row(app, &name);
             }
         }
         Msg::InputCheckDone {

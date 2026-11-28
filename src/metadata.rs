@@ -137,6 +137,18 @@ impl Target {
             Target::Darwin(host) => format!("darwin:{host}"),
         }
     }
+
+    /// The target for the wallpaper extractor. A dendritic flake scans as
+    /// `fp`, but its generated wallpaper set lives on the host configuration,
+    /// so the wallpaper scan needs that host when one is known.
+    pub fn wallpaper_arg(&self, host: &str) -> String {
+        match self {
+            Target::FlakeParts | Target::Nixos(_) if !host.is_empty() => {
+                format!("nixos:{host}")
+            }
+            _ => self.as_arg(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -575,6 +587,20 @@ mod tests {
         );
         assert_eq!(Target::parse("home:den").unwrap().as_arg(), "home:den");
         assert!(Target::parse("bogus").is_none());
+    }
+
+    #[test]
+    fn wallpaper_target_uses_the_host_for_a_dendritic_flake() {
+        assert_eq!(Target::FlakeParts.wallpaper_arg("ojuny"), "nixos:ojuny");
+        assert_eq!(Target::FlakeParts.wallpaper_arg(""), "fp");
+        assert_eq!(
+            Target::Nixos("fixture".into()).wallpaper_arg("ojuny"),
+            "nixos:ojuny"
+        );
+        assert_eq!(
+            Target::Home("den".into()).wallpaper_arg("ojuny"),
+            "home:den"
+        );
     }
 
     #[test]

@@ -96,6 +96,9 @@ the header and bottom bars.
 - A control with `visibleWhen` renders only while another option in the same
   menu satisfies the condition, re-evaluated live as values change. Hidden
   controls are not written on save.
+- A `wallpaper` control shows a loading tile while its preset set is fetched
+  and reports a failed or empty fetch on the control instead of leaving an
+  unexplained placeholder tile.
 - Each control shows its label, a collapsed details toggle for helper text, and
   an unsaved indicator when its staged value differs from the file.
 - Controls that resolve to another module (a merged import) include an
@@ -125,17 +128,20 @@ preview. Owner, repository, ref, host, directory, and registry id are free-text
 fields with an `EntryCompletion` dropdown; scannable fields also carry an
 explicit scan button. Commit fields are an editable commit picker instead of a
 free-text hash: the picker shows the current value, lists the commits returned
-by `Scan commits`, and still accepts a typed hash. Scans never start on focus or
-typing, and a scan with blank prerequisites reports the missing field inline.
+by `Scan commits` with each commit's SHA and date, and still accepts a typed
+hash. Scans never start on focus or typing, and a scan with blank prerequisites
+reports the missing field inline.
 Channel selection uses a dropdown of discovered `nixos-*` branches; hosted types
 expose owner, repository, ref, optional commit, host, directory, and git fetch
 switches; path adds a folder chooser; tarball and file add a NAR hash field.
 
 `Check for updates` reports progress for each input, offers a Cancel action, and
 stops an input that exceeds its timeout. A failed or timed-out input shows its
-error inline on that input's row instead of leaving the spinner running. The
-page keeps its scroll position while the progress messages rebuild it; the
-saved value is restored after the new adjustment has an upper bound.
+error inline on that input's row instead of leaving the spinner running.
+Progress for one input updates that row in place; the page is rebuilt when the
+check finishes or an input is updated, and the rebuilt page keeps its scroll
+position. The saved value is restored after the new adjustment has an upper
+bound.
 
 ### 1.5 Category view
 

@@ -475,6 +475,7 @@ fn build_ui(
         secureboot_pending: RefCell::new(Vec::new()),
         secureboot_loading: Cell::new(false),
         input_checks: RefCell::new(HashMap::new()),
+        input_rows: RefCell::new(HashMap::new()),
         input_checking: Cell::new(false),
         input_check_epoch: Cell::new(0),
         input_check_cancel: RefCell::new(None),
